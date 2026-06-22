@@ -66,6 +66,7 @@ function flags(args) {
     else if (a === "--model") f.model = args[++i];
     else if (a === "--retries") f.retries = +args[++i];
     else if (a === "--stub") f.stub = true;
+    else if (a === "--static") f.static = true;
     else if (a === "--objective") f.objective = args[++i];
     else f._.push(a);
   }
@@ -226,10 +227,13 @@ function buildFunctionRegistry(templatesDir, seedBase = 1) {
     const vary = (text.match(/^\s*vary\s+(.+)$/m) || [, ""])[1].trim().split(/\s+/).filter(Boolean);
     const ruleM = text.match(/^\s*rule\s+(.+)$/m);
     const verbs = [...new Set(text.split(/\r?\n/).map(l => l.trim().split(/\s+/)[0]).filter(v => v && !v.startsWith("#")))];
+    // dynamic = the built task is a VIDEO (any IN/OUT component has >1 frame). Static = clean grid→grid (ARC-AGI-2 shape).
+    let dynamic = false;
+    try { const p = E.buildTask(text, { examples: 1, seed0: seedBase }); dynamic = [p.in, p.out, ...p.examples.flatMap(e => [e.in, e.out])].some(v => v.length > 1); } catch (e) { }
     return {
       name: stem(file), file, category: concepts[0] || stem(file), concepts,
       difficulty: difficulty == null ? null : difficulty, rule: ruleM ? ruleM[1].trim() : null,
-      safeAug: vary, wholeGrid: WHOLE_GRID_RE.test(text), declaresExamples: /^\s*examples\b/m.test(text), verbs,
+      safeAug: vary, wholeGrid: WHOLE_GRID_RE.test(text), declaresExamples: /^\s*examples\b/m.test(text), verbs, dynamic,
     };
   });
 }
@@ -237,6 +241,7 @@ function buildFunctionRegistry(templatesDir, seedBase = 1) {
 // augmentation subset (an axis is offered only if SAFE for every chosen function) → composition hint.
 function proposeMenu(rng, registry, opts = {}) {
   const k = opts.k || 2;
+  if (opts.static) registry = registry.filter(f => !f.dynamic);   // ARC-AGI-2-shape: clean grid→grid tasks only, no physics/video
   const byCat = {}; for (const fdef of registry) (byCat[fdef.category] || (byCat[fdef.category] = [])).push(fdef);
   const cats = Object.keys(byCat);
   const chosen = []; let wholeUsed = 0, attempts = 0;
@@ -318,6 +323,8 @@ function buildPrompt(registry, menu, opts = {}) {
     + " (orientation→wide|tall|square, symmetry→h|v|hv|rot|none, size_class→small|mid|big, parity→even|odd).");
   out.push("", "YOUR TASK:", menuToPrompt(menu),
     "", "A VALID EXAMPLE SCENE (study the FORM, then write a DIFFERENT one that combines your blocks):", exText);
+  if (opts.static) out.push("",   // ARC-AGI-2 shape: clean grid→grid, no animation
+    "STATIC TASK: IN and OUT are each a SINGLE grid (a before/after snapshot), NOT an animation. Build the input, then 'hold 1' (IN), 'cut', apply the transform, 'snap 1' (OUT). Do NOT use 'run' or any physics/motion. The hidden rule must be a clean, instructive grid transformation an ARC-AGI-2 solver could infer.");
   if (opts.novelty) out.push("",   // PAN-116: reward a genuine twist, not a copy
     "NOVELTY: do NOT copy the example. Combine your building blocks in a NEW way and add ONE surprising twist to the rule or the OUT — while staying coherent (every example pair must teach the SAME rule, and OUT must differ from IN).");
   return out.join("\n");
@@ -352,6 +359,13 @@ async function callModelHTTP(prompt, { endpoint, model, temperature = 0.9 }) {
   if (!res.ok) throw new Error("model HTTP " + res.status + ": " + (await res.text()).slice(0, 200));
   const j = await res.json();
   return (j.choices && j.choices[0] && (j.choices[0].message ? j.choices[0].message.content : j.choices[0].text)) || "";
+}
+// collapse a task to STATIC: keep only the LAST frame of every IN/OUT component → clean grid→grid (no animation).
+function staticizeTask(t) {
+  const last = v => [v[v.length - 1]];
+  t.examples = t.examples.map(e => ({ in: last(e.in), out: last(e.out) }));
+  t.in = last(t.in); t.out = last(t.out); t.fps = 1;
+  return t;
 }
 // the self-correcting loop for ONE task: call → verify → on reject, re-prompt with the reasons. Returns {task,...} or null.
 async function llmGenerateOne(prompt, callModel, opts = {}) {
@@ -597,8 +611,8 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const stats = { attempts: 0, retried: 0, failed: 0, duplicates: 0 }, cap = f.maxAttempts || n * 8; let i = 0;
     while (accepted.length < n && stats.attempts < cap) {
       stats.attempts++;
-      const menu = proposeMenu(rng, registry, { k });
-      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true });
+      const menu = proposeMenu(rng, registry, { k, static: f.static });
+      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: f.static });
       let callModel;
       if (f.stub) { const ex = registry.find(r => r.name === menu.functions[0].name), exText = fs.readFileSync(path.join(templatesDir, ex.file), "utf8").trim(), sd = seedBase + (i++); callModel = async () => "seed " + sd + "\n" + exText; }
       else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model });
@@ -606,7 +620,8 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       catch (e) { stats.failed++; continue; }
       if (!r) { stats.failed++; continue; }
       if (r.attempts > 1) stats.retried++;
-      const task = r.task, hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
+      const task = f.static ? staticizeTask(r.task) : r.task;
+      const hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
       if (seen.has(hash)) { stats.duplicates++; continue; }
       seen.add(hash);
       task.meta.id = hash.slice(0, 12); task.meta.template = "llm:" + menu.functions.map(x => x.name).join("+"); task.meta.category = "llm"; task.meta.source = "llm";
@@ -940,6 +955,13 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const llmR = await llmGenerateOne("PROMPT", mockModel, { retries: 2 });
     checks.push(["self-correcting loop retries on reject then accepts the fixed scene", !!llmR && llmR.attempts === 2 && llmR.task.meta.teaching.ok && mockCalls === 2]);
     checks.push(["extractScene strips code fences + prose", extractScene("Here is my scene:\n```\ngrid 8 8\nspawn dot at 1 1\n```\nDone.").startsWith("grid 8 8") && !extractScene("```\ngrid 8 8\n```").includes("`")]);
+    checks.push(["extractScene keeps only the FIRST scene of a multi-scene reply", extractScene("rule a\ngrid 8 8\nspawn dot at 1 1\nsnap 1\n\nrule b\ngrid 9 9\nspawn dot at 2 2\nsnap 1").split(/\n/).filter(l => /^grid/.test(l)).length === 1]);
+    // --static: physics/video templates excluded + every task collapsed to a single grid (ARC-AGI-2 shape)
+    const regStatic = reg.filter(r => !r.dynamic);
+    checks.push(["static mode excludes dynamic templates, keeps the abstract ones", reg.some(r => r.dynamic) && regStatic.length >= 40 && regStatic.every(r => !r.dynamic) && !regStatic.find(r => r.name === "gravity_settle") && regStatic.find(r => r.name === "classify_convex")]);
+    const dynTask = E.buildTask(fs.readFileSync(path.join(__dirname, "scenes", "library", "gravity_settle.txt"), "utf8"), { examples: 2 });
+    const before = dynTask.out.length; staticizeTask(dynTask);
+    checks.push(["staticizeTask collapses every component to the last single frame", before > 1 && dynTask.out.length === 1 && dynTask.examples.every(e => e.in.length === 1 && e.out.length === 1)]);
     let okAll = true;
     for (const [n, p] of checks) { console.log((p ? "  ok  " : " FAIL ") + n); okAll = okAll && p; }
     console.log(okAll ? "\nself-test: ALL PASS" : "\nself-test: FAILURES");
