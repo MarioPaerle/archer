@@ -276,6 +276,8 @@ const GUARDRAILS = [
   "- One statement per line. '#' starts a comment. Commas count as spaces.",
   "- Coords are 'row col' (0,0 = top-left; +row = down, +col = right).",
   "- Reserved words you must NOT use as object ids: shape, sel, all, largest, smallest, color, at, where, it, by, into, is.",
+  "- Output EXACTLY ONE scene (a single 'grid' line). Do not write multiple tasks.",
+  "- Use ONLY shape names from the SHAPES list (e.g. 'disc'/'ring', NOT 'circle'; 'rect', NOT 'rectangle'). No invented shapes.",
   "- Do NOT invent syntax (no 'to by', etc.) — use only the forms in the GRAMMAR below.",
   "- Mark the IN/OUT split with 'cut'. Label the task with 'rule ...' and 'concept ...'.",
   "- VARY every non-rule feature across examples: use 'random', 'color rand', and 'rand LO HI' sizes.",
@@ -324,11 +326,15 @@ function buildPrompt(registry, menu, opts = {}) {
 // ---- small-model generation harness (PAN-122 self-correcting loop + PAN-116 novelty) ----
 // The real CINECA loop: a served model (Qwen-30B-A3B via an OpenAI-compatible endpoint) WRITES scene-DSL from the
 // prompt-kit; the engine is the verifier; on reject we feed the reasons back and retry. Pluggable callModel → testable.
-function extractScene(text) {   // pull the DSL out of a model reply (strip ``` fences / prose)
+function extractScene(text) {   // pull ONE scene's DSL out of a model reply (strip ``` fences / prose; take only the first scene)
   if (!text) return "";
   const fence = text.match(/```(?:[a-z]*\n)?([\s\S]*?)```/i);
-  let s = fence ? fence[1] : text;
-  const lines = s.split(/\r?\n/);
+  let s = (fence ? fence[1] : text).trim();
+  // models often emit several scenes separated by blank lines — take the FIRST blank-line block that is a scene.
+  const blocks = s.split(/\n[ \t]*\n/);
+  const isScene = b => /^[ \t]*(grid|===)\b/m.test(b);
+  let first = blocks.find(isScene) || blocks[0] || s;
+  const lines = first.split(/\r?\n/);
   const start = lines.findIndex(l => /^\s*(===|name|grid|bg|seed|rule|concept|def|spawn|examples|difficulty)\b/.test(l));
   return (start >= 0 ? lines.slice(start) : lines).join("\n").trim();
 }
