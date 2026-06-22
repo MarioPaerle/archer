@@ -24,6 +24,7 @@ const E = require("./engine.js");
 const GIF = require("./gif.js");
 const Patch2D = require("./tokenizer/patch2d.js");
 const Shape2D = require("./tokenizer/shape2d.js");
+const Baseline = require("./baseline.js");   // dumb 1-step solver → "too simple" detector (--hard filter)
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -67,6 +68,7 @@ function flags(args) {
     else if (a === "--retries") f.retries = +args[++i];
     else if (a === "--stub") f.stub = true;
     else if (a === "--static") f.static = true;
+    else if (a === "--hard") f.hard = true;
     else if (a === "--objective") f.objective = args[++i];
     else f._.push(a);
   }
@@ -123,6 +125,7 @@ function genDataset(opts = {}) {
     const te = task.meta.teaching;
     if (!te.ok || !te.coherent) { stats.rejected++; bump(stats.byReason, te.ok ? "incoherent" : "no-teaching"); continue; }
     if (opts.static) staticizeTask(task);   // collapse to single-frame grids (ARC-AGI-2 shape)
+    if (opts.hard) { const triv = Baseline.trivialSolve(task); if (triv) { stats.rejected++; bump(stats.byReason, "too-trivial:" + triv.split(":")[0]); continue; } }   // drop 1-step-solvable
     const hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
     if (seen.has(hash)) { stats.duplicates++; bump(stats.byReason, "duplicate"); continue; }   // content-hash dedup
     seen.add(hash);
@@ -352,12 +355,21 @@ function buildTemplatePrompt(registry, rng, opts = {}) {
     "", "GRAMMAR (the parts you may use):", ...grammarSlice(verbs),
     "", "PREDICATES (for dispatch/classify/where): " + Object.keys(E.PREDICATES).join(" · ") + ".",
     "", "DESIGN GOAL:",
-    "Invent ONE original task with a SINGLE clean rule — the kind an ARC-AGI-2 solver could infer from 3–4 examples:",
-    "e.g. a context-sensitive recolour (dispatch by a predicate), a symmetry/figure completion, a boolean of two figures,",
-    "an analogy (A→B, apply to C), an odd-one-out, a counting/ordering rule, a palette/shape remap, an inside/outside fill.",
-    "HARD REQUIREMENTS: (1) exactly ONE rule; (2) the OUT must be EXACTLY that rule applied to the IN — nothing arbitrary;",
+    ...(opts.hard ? [
+      "Invent ONE HARD ARC-AGI-2-style task whose rule needs TWO DEPENDENT reasoning steps — the second step uses the RESULT or a",
+      "PROPERTY computed in the first. Examples of the SHAPE of difficulty (invent your own): 'classify each object by a predicate,",
+      "THEN transform only one class (mirror it / remove it / recolor it)'; 'order objects by size, THEN recolor each by its rank';",
+      "'for each object: if it has a hole fill it, otherwise leave it, THEN keep only the largest'. The rule must be a SINGLE coherent",
+      "idea expressed as a dependent chain — NOT two unrelated operations glued together, and NOT a single one-shot transform a dumb",
+      "solver (rotate/flip/recolor/extract-colour/mirror/tile) could crack. Make it genuinely require inference of the intermediate step.",
+    ] : [
+      "Invent ONE original task with a SINGLE clean rule — the kind an ARC-AGI-2 solver could infer from 3–4 examples:",
+      "e.g. a context-sensitive recolour (dispatch by a predicate), a symmetry/figure completion, a boolean of two figures,",
+      "an analogy (A→B, apply to C), an odd-one-out, a counting/ordering rule, a palette/shape remap, an inside/outside fill.",
+    ]),
+    "HARD REQUIREMENTS: (1) ONE coherent rule" + (opts.hard ? " (a 2-step dependent chain)" : "") + "; (2) the OUT must be EXACTLY that rule applied to the IN — nothing arbitrary;",
     "(3) the rule must be VISIBLE from the examples alone; (4) STATIC (single-grid IN and OUT; no 'run'/physics);",
-    "(5) vary every non-rule feature across seeds. Do NOT chain unrelated operations — one coherent idea only.",
+    "(5) vary every non-rule feature across seeds.",
     "", "REFERENCE TEMPLATES (study the FORM and the 'rule/concept/difficulty/vary' header; invent a DIFFERENT idea):",
     ...exemplars.map((e, i) => "--- example " + (i + 1) + " ---\n" + e),
   ].join("\n");
@@ -418,8 +430,8 @@ async function llmGenerateOne(prompt, callModel, opts = {}) {
 }
 
 // a candidate is a GOOD static template iff, reseeded across K seeds, it stays coherent + teaching + varied + single-grid.
-function verifyTemplate(scene, K = 4) {
-  let rule = null, name = "proposal";
+function verifyTemplate(scene, opts = {}) {
+  const K = opts.K || 4; let rule = null, name = "proposal";
   for (let s = 1; s <= K; s++) {
     let t; try { t = E.buildTask(scene, { examples: 3, exSeeds: [s, s + 1, s + 2], testSeed: s + 3 }); }
     catch (e) { return { ok: false, reason: "parse error: " + String(e.message).split("\n")[0] }; }
@@ -428,6 +440,7 @@ function verifyTemplate(scene, K = 4) {
     if (!te.coherent) return { ok: false, reason: "incoherent: " + (te.incoherent || []).join("; ") };
     if (te.examplesVary === false) return { ok: false, reason: "the examples are identical — vary position/colour/size across seeds with random/color rand/rand" };
     if ([t.in, t.out, ...t.examples.flatMap(e => [e.in, e.out])].some(v => v.length > 1)) return { ok: false, reason: "the task is a VIDEO — make it STATIC: single-grid IN and OUT, no 'run'/physics; use hold/cut/snap" };
+    if (opts.hard) { const triv = Baseline.trivialSolve(t); if (triv) return { ok: false, reason: "TOO SIMPLE — a dumb 1-step solver cracks it with '" + triv + "'. Add a dependent second reasoning step." }; }
     rule = t.meta.rule; name = ((t.meta.concepts || [])[0] || "proposal");
   }
   if (!rule) return { ok: false, reason: "missing a 'rule ...' line describing the single transformation" };
@@ -620,7 +633,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       return;
     }
     let res;
-    try { res = genDataset({ templatesDir, n, seedBase, wildFrac: f.wildFrac, examples: f.examples, maxAttempts: f.maxAttempts, static: f.static }); }
+    try { res = genDataset({ templatesDir, n, seedBase, wildFrac: f.wildFrac, examples: f.examples, maxAttempts: f.maxAttempts, static: f.static, hard: f.hard }); }
     catch (e) { return console.error("generate-dataset: " + e.message); }
     writeDataset(dir, res.accepted, shards, numNodes > 1 ? `node-${nodeRank}-` : "");
     reportDataset(dir, res.stats, n, shards, 1);
@@ -698,7 +711,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const statics = registry.filter(r => !r.dynamic);
     while (accepted.length < n && stats.attempts < cap) {
       stats.attempts++;
-      const prompt = buildTemplatePrompt(registry, rng, { templatesDir });
+      const prompt = buildTemplatePrompt(registry, rng, { templatesDir, hard: f.hard });
       let callModel;
       if (f.stub) { const ex = statics[rng.int(0, statics.length - 1)]; const txt = fs.readFileSync(path.join(templatesDir, ex.file), "utf8"); callModel = async () => txt; }   // stub: echo a real static template (tests the pipeline)
       else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model });
@@ -706,7 +719,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       for (let a = 0; a <= retries; a++) {
         att++;
         let reply; try { reply = await callModel(feedback ? prompt + "\n\nYOUR PREVIOUS TEMPLATE WAS REJECTED — " + feedback + "\nFix exactly that; output the corrected scene only." : prompt); } catch (e) { feedback = "model error"; continue; }
-        scene = extractScene(reply); const v = verifyTemplate(scene);
+        scene = extractScene(reply); const v = verifyTemplate(scene, { hard: f.hard });
         if (v.ok) { good = v; break; } feedback = v.reason;
       }
       if (!good) { stats.failed++; continue; }
