@@ -1,0 +1,7 @@
+name object permanence crossing layers
+grid 22 16
+walls none
+spawn rect 2 5 at 7 0 color 2 vel 0 1 ghost 1 layer 1
+spawn rect 5 2 at 0 10 color 4 vel 1 0 ghost 1 layer 2
+run 26
+hold 6

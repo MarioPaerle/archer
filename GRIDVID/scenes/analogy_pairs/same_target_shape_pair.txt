@@ -1,0 +1,11 @@
+name analogy same target shape pair
+grid 34 20
+walls none
+spawn dot at 4 1 color 2 vel 0 1 ghost 1 layer 0
+spawn frame 6 8 at 2 14 color 5 layer 1
+run 34
+hold 4
+spawn square 2 at 13 1 color 2 vel 0 1 ghost 1 layer 0
+spawn frame 6 8 at 11 14 color 5 layer 1
+run 34
+hold 8

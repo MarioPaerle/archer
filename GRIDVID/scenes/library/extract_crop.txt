@@ -1,0 +1,15 @@
+rule keep only the red object, and the output is cropped to just that object
+concept selection extraction crop variable-size
+difficulty 0.62
+vary flip rot color
+grid rand 10 14 10 14
+bg 0
+seed 1
+walls none
+spawn square rand 2 4 random 1 1 7 7 color 2 id a
+spawn square rand 2 4 random 1 1 7 7 color rand 3 9
+spawn Lshape 3 random 1 1 7 7 color rand 3 9
+hold 1
+cut
+extract color 2
+crop pad 0

@@ -1,0 +1,11 @@
+name analogy collision color pair
+grid 34 18
+walls box
+spawn square 2 at 4 1 color 2 vel 0 1 bounce 0
+spawn square 2 at 4 30 color 3 vel 0 -1 bounce 0
+run 18
+hold 4
+spawn square 2 at 12 1 color 4 vel 0 1 bounce 0
+spawn square 2 at 12 30 color 7 vel 0 -1 bounce 0
+run 18
+hold 8

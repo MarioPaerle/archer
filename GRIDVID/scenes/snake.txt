@@ -1,0 +1,5 @@
+name snake
+grid 18 18
+seed 4
+snake at 9 9 len 4 color 3 food 2
+run 70

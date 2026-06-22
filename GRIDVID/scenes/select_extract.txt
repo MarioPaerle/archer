@@ -1,0 +1,10 @@
+# EXTRACT — keep only the objects matching a property (selection prior).
+grid 12 16
+bg 0
+spawn square 2 at 2 2 color 2
+spawn square 2 at 2 8 color 3
+spawn square 2 at 7 2 color 2
+spawn square 2 at 7 11 color 4
+hold 2                # BEFORE: four objects, two of them color 2
+extract color 2       # AFTER: only the color-2 objects survive
+snap 2

@@ -1,0 +1,22 @@
+# RULE (context-sensitive): recolor each shape by a PREDICATE of its own form —
+# symmetric shapes turn blue (1), asymmetric shapes turn red (2). The incidental
+# input colour (3..7) and the positions vary per example; only the symmetry decides the OUT.
+rule symmetric shapes become blue, asymmetric shapes become red
+concept dispatch predicate symmetry classification conditional
+difficulty 0.6
+grid rand 14 18 14 18
+seed 1
+spawn square rand 2 3 color rand 3 7 random 1 1 6 6
+spawn plus 3 color rand 3 7 random 1 8 6 12
+spawn Lshape 3 color rand 3 7 random 8 1 12 6
+spawn triangle 4 color rand 3 7 random 8 8 12 12
+hold 1
+cut
+dispatch all by symmetric
+  case yes
+    recolor it tint 1
+  case no
+    recolor it tint 2
+end
+snap 1
+vary flip rot zoom

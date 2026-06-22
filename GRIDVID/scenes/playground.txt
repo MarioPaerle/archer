@@ -1,0 +1,9 @@
+name playground
+# several shapes falling + bouncing together (mixed dynamics)
+grid 24 24
+gravity down 1
+spawn disc 2 at 0 4 color 3 grav 1 bounce 1
+spawn disc 1 at 0 12 color 8 grav 1 bounce 1
+spawn square 4 at 0 18 color 2 grav 1
+spawn triangle 4 at 0 9 color 7 grav 1
+run 40

@@ -1,0 +1,12 @@
+name kidset candy counter
+grid 24 20
+seed 3
+walls floor
+gravity down 1
+counter at 1 3 base 3 colors 2 4 3 every 3 gap 4
+spawn rect 1 18 at 17 2 color 5
+spawn line 5 v at 12 2 color 5
+spawn line 5 v at 12 7 color 5
+spawn line 5 v at 12 12 color 5
+run 62
+hold 5

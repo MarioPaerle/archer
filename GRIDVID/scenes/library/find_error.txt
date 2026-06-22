@@ -1,0 +1,14 @@
+# TASK: one block has the wrong colour — recolour it to match the rest.
+rule recolour the odd-coloured block so every block matches the majority
+concept pattern error-correction color
+vary flip rot zoom color
+grid 22 8
+bg 0
+seed 1
+spawn square 2 at 3 1 color rand id b
+copy b to 3 5 times 4 0 4   # a row of 5 identical green blocks
+corrupt all tint 8          # one block (random per seed) turns wrong
+hold 1                      # IN: the row with one odd block
+cut
+repair                      # OUT: the odd block is fixed back to green
+snap 1

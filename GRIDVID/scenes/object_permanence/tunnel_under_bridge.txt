@@ -1,0 +1,8 @@
+name object permanence tunnel under bridge
+grid 26 14
+walls none
+spawn rect 4 12 at 5 7 color 5 layer 1
+spawn square 2 at 6 0 color 3 vel 0 1 ghost 1 layer 0
+spawn dot at 10 3 color 7 layer 2
+run 32
+hold 6

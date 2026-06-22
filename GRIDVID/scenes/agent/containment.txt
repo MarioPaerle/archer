@@ -1,0 +1,13 @@
+name containment
+# CONTAINMENT (inside vs outside): two hollow frames. Background cells SEALED inside a
+# closed frame get recolored (azure) — they are "contained"; background outside stays
+# black. Teaches the topological inside/outside prior: a closed boundary makes an interior.
+grid 22 14
+mark_enclosed 8
+# a big closed box -> its interior fills with azure (inside)
+spawn frame 9 9 at 2 2 color 3
+# a second closed box elsewhere -> also fills (another inside region)
+spawn frame 6 7 at 4 13 color 4
+# a lone dot OUTSIDE both boxes stays surrounded by black (outside, not contained)
+spawn dot at 0 20 color 2
+hold 8

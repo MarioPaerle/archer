@@ -1,0 +1,12 @@
+rule fill the inside of the rectangle frame
+concept inside enclosed
+difficulty 0.55
+vary flip color zoom
+grid 14 14
+bg 0
+seed 9
+spawn frame rand 4 6 rand 4 6 random 1 2 6 7 color 6 id border
+hold 1
+cut
+mark_enclosed 2
+snap 1

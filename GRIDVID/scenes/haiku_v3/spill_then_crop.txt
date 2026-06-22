@@ -1,0 +1,13 @@
+rule water pours and pools, then the view crops to the water
+concept fluid crop variable-size physics
+difficulty 0.71
+vary shift
+grid rand 13 17 12 16
+bg 0
+walls floor
+spawn rect 2 5 random 8 10 4 10 color 5 id wall
+spill at 0 6 color 3 rate 3
+run 8
+hold 1
+cut
+crop pad 1

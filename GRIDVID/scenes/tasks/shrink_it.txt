@@ -1,0 +1,12 @@
+# TASK: shrink the object — downsample so each 2x2 block becomes one cell (zoom-out as a FUNCTION).
+rule shrink the object so each 2x2 block becomes a single cell
+concept scaling zoom shrink
+vary flip color
+grid 16 16
+bg 0
+seed 1
+spawn square rand 4 6 random 0 0 8 8 color rand id s
+hold 1                  # IN: the object
+cut
+zoom s factor -2        # OUT: downsampled (half size)
+snap 1

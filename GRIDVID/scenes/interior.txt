@@ -1,0 +1,5 @@
+name interior
+# a convex object rendered with distinct border vs interior color (intern vs extern)
+grid 12 12
+spawn square 7 at 3 3 color 2 interior 4
+hold 6

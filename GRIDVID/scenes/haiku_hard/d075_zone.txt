@@ -1,0 +1,17 @@
+rule objects that settle within the red zone survive; others disappear
+concept gravity physics collision conditional region-sensitivity
+vary color zoom
+difficulty 0.75
+grid 12 16
+bg 0
+seed 1
+gravity down 1
+walls floor
+spawn square rand 2 3 random 0 2 4 8 color rand 2 7 grav 1
+spawn square rand 2 3 random 0 2 4 8 color rand 2 7 grav 1
+spawn plus 3 random 0 2 4 8 color 5 grav 1
+hold 1
+cut
+run 12
+extract color 2 3 4 5 6 7
+snap 1

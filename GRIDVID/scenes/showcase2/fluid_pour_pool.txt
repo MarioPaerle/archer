@@ -1,0 +1,13 @@
+rule water spills and pools around the barrier
+concept fluid physics
+difficulty 0.68
+vary color
+grid 15 16
+bg 0
+walls floor
+seed 7
+spawn square 3 random 6 5 10 11 color 1 id wall
+spill at 0 8 color 3 rate 3
+run 4
+cut
+run 18

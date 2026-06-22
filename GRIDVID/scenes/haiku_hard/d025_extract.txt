@@ -1,0 +1,16 @@
+rule keep only the green (color-3) squares; remove all red squares
+concept selection extraction color filtering
+vary flip rot zoom
+difficulty 0.25
+grid 14 10
+bg 0
+seed 1
+walls none
+spawn square 2 random 1 1 6 9 color 3
+spawn square 2 random 1 1 6 9 color 1
+spawn square 2 random 1 1 6 9 color 3
+spawn dot random 2 2 8 8 color 1
+hold 1
+cut
+extract color 3
+snap 1

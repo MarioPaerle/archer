@@ -1,0 +1,12 @@
+# whole-grid: remap every cell by a fixed colour map (2<->6, 3<->4) — like real ARC 0d3d703e.
+rule recolour the whole grid by the fixed map 2->6, 6->2, 3->4, 4->3
+concept grid palette recolor whole-grid
+difficulty 0.6
+vary flip rot
+grid 10 10
+bg 0
+seed 1
+noise uniform colors 0 2 3 4 6
+hold 1
+cut
+grid_map 2 6 6 2 3 4 4 3

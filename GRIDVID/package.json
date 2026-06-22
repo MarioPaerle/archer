@@ -1,0 +1,16 @@
+{
+  "name": "gridvid",
+  "version": "0.1.0",
+  "private": true,
+  "description": "gridvid — 2D grid-video studio (ARC-palette core-knowledge prior generator)",
+  "scripts": {
+    "sync": "node build.js",
+    "app": "npm run sync && tauri dev",
+    "app:build": "npm run sync && tauri build",
+    "tauri": "tauri",
+    "test": "node cli.js self-test"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

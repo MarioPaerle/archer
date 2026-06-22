@@ -1,0 +1,11 @@
+rule the object rotates 90 degrees each step
+concept rotation spin physics
+difficulty 0.55
+vary color
+grid 12 12
+bg 0
+seed 1
+spawn Lshape rand 3 4 random 2 2 6 6 color rand 1 8 spin 2 id s
+run 1
+cut
+run 4

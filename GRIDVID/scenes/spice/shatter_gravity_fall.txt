@@ -1,0 +1,14 @@
+rule the object shatters and pieces fall due to gravity, piling at the bottom
+concept shatter with gravity physics
+difficulty 0.6
+vary color
+grid 12 16
+bg 0
+walls floor
+seed 2
+spawn rect 3 4 random 2 3 8 6 color rand 2 7 id obj
+gravity down 1
+hold 1
+shatter obj
+cut
+run 12

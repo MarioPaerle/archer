@@ -1,0 +1,22 @@
+# TASK: the figure is BUILT BY COMPOSING DSL functions (def/use/repeat), then one block is broken — restore it.
+rule fill the missing cells to restore the composed figure
+concept composition reconstruction
+vary flip rot color
+def block r c col
+  spawn square 2 at $r $c color $col
+end
+def row r col
+  repeat 3 i
+    use block $r $i*4+1 $col
+  end
+end
+grid 14 8
+bg 0
+seed 1
+use row 1 rand        # top row of 3 blocks (colour varies per example)
+use row 5 rand        # bottom row — composed from the same function
+break shape square cells 2
+hold 1                # IN: composed figure with a broken block
+cut
+repair                # OUT: restored
+snap 1

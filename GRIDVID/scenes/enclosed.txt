@@ -1,0 +1,8 @@
+name enclosed
+# inside vs outside: enclosed background cells (unreachable from the border) get
+# recolored. This is the ARC inside/outside prior (holes-as-objects, cf. e69241bd).
+grid 14 14
+mark_enclosed 8
+spawn ring 7 at 3 3 color 1
+spawn frame 5 9 at 1 1 color 2
+hold 6

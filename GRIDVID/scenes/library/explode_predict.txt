@@ -1,0 +1,13 @@
+rule the object explodes outward into radial fragments
+concept explosion physics radial
+difficulty 0.7
+vary color
+grid 13 13
+bg 0
+walls box
+seed 1
+spawn square rand 3 4 random 4 4 8 8 color rand 1 8 id s
+hold 1
+explode s
+cut
+run 6

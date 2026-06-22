@@ -1,0 +1,12 @@
+# TASK: an IRREGULAR grid (tight columns, wide rows) with missing cells — fill them.
+rule fill the missing cells so the irregular grid is complete
+concept grid holes fill irregular
+vary flip color
+grid 18 18
+bg 0
+seed 1
+lattice 3 4 cell 3 gap 1 color 6 holes 3 irregular   # non-uniform cell sizes
+hold 1                                                 # IN: irregular grid with holes
+cut
+fill                                                   # OUT: holes filled
+snap 1

@@ -1,0 +1,13 @@
+rule the ball bounces around the box off the walls and blocks
+concept bounce reflection physics prediction
+difficulty 0.65
+vary color
+grid 13 16
+bg 0
+walls box
+seed 1
+spawn square 2 random 2 2 4 13 color rand 1 8 vel 1 2 bounce 1 id ball
+spawn square 2 random 8 4 10 11 color 5 id block
+run 3
+cut
+run 14

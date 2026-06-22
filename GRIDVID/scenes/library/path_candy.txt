@@ -1,0 +1,11 @@
+rule the marker follows the path and eats the candies along the way
+concept path follow collecting candy physics
+difficulty 0.64
+vary color
+grid rand 11 15 12 16
+bg 0
+seed 1
+path random 16 color 5 walk 4 candy rand 1 8 every 3
+run 2
+cut
+run 11

@@ -1,0 +1,14 @@
+# RULE: superimpose the two figures; cells only in A keep A's colour, cells only in B keep B's colour,
+# and the SHARED cells take the special overlap colour (5). (overlay, not xor — overlap is marked, not cancelled.)
+rule overlay the two shapes; shared cells become the overlap colour
+concept boolean figure-algebra overlay intersection mark
+difficulty 0.7
+grid rand 12 15 10 12
+seed 1
+spawn square rand 3 5 at 1 1 color 2 id A
+spawn plus rand 3 5 at 1 7 color 3 id B
+hold 1
+cut
+overlay_figs A B at 1 1 overlap 5
+snap 1
+vary flip rot

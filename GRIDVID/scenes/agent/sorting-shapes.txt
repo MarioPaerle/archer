@@ -1,0 +1,17 @@
+name sorting shapes
+# SORTING / matching: a shape-sorter board with cut-out holes. Each loose piece glides
+# to the hole of its OWN shape and snaps in (shape A -> A-hole, B -> B-hole). Teaches
+# object-to-slot matching: like goes with like, by shape regardless of color/position.
+grid 22 22
+seed 11
+sort on
+board 6 22 at 0 0 color 5
+hole square 3 at 1 2 id sq color 0
+hole triangle 4 at 1 9 id tr color 0
+hole plus 3 at 1 16 id pl color 0
+# pieces spawn at random in the lower area; each names the matching hole shape
+spawn square 3 random 12 0 21 21 color 2 target sq
+spawn triangle 4 random 12 0 21 21 color 3 target tr
+spawn plus 3 random 12 0 21 21 color 6 target pl
+run 38
+hold 5

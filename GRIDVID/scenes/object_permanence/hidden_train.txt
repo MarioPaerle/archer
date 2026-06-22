@@ -1,0 +1,9 @@
+name object permanence hidden train
+grid 30 14
+walls none
+spawn line 5 at 6 0 color 2 vel 0 1 ghost 1 layer 0
+spawn line 5 at 8 0 color 3 vel 0 1 ghost 1 layer 0
+spawn rect 9 5 at 3 9 color 5 layer 1
+spawn rect 9 5 at 3 20 color 5 layer 1
+run 38
+hold 6

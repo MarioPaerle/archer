@@ -1,0 +1,21 @@
+# RULE: mark the objects that HAVE A HOLE. Objects with an enclosed hole (frame/ring)
+# turn yellow (4); solid objects (square/disc) are removed. The detector is `loop`.
+rule keep only the shapes that have a hole, painted yellow; delete the solid ones
+concept dispatch predicate topology hole inside-outside conditional
+difficulty 0.65
+grid rand 15 18 15 18
+seed 1
+spawn frame 3 3 color rand 3 8 random 1 1 6 6
+spawn square rand 2 3 color rand 3 8 random 1 9 6 13
+spawn ring 3 color rand 3 8 random 9 1 13 6
+spawn disc 2 color rand 3 8 random 9 9 13 13
+hold 1
+cut
+dispatch all by loop
+  case yes
+    recolor it tint 4
+  case no
+    remove it
+end
+snap 1
+vary flip rot

@@ -1,0 +1,9 @@
+name object permanence bounce pinball
+grid 24 16
+walls box
+spawn dot at 2 2 color 8 vel 1 1 bounce 1
+spawn dot at 13 20 color 6 vel -1 -1 bounce 1
+spawn square 2 at 7 7 color 5
+spawn square 2 at 4 16 color 5
+run 52
+hold 5

@@ -1,0 +1,52 @@
+# MANUAL mode (Bongard scene->class): each example is a whole scene. The class token is GREEN (3)
+# if EVERY shape in the scene is convex, RED (2) if any shape is concave (L / frame / notch).
+# Hand-authored so the CLASS itself varies across examples (a single reseed can't flip the class).
+=== example ===
+rule green token if all shapes are convex, red token if any shape is concave
+concept classify bongard convexity scene-level marker conditional
+difficulty 0.7
+grid 12 12
+spawn disc 2 at 2 2 color 5
+spawn plus 3 at 2 8 color 6
+spawn square 2 at 8 3 color 7
+hold 1
+cut
+classify all by convex into 3 2 at 0 0 size 2
+snap 1
+=== example ===
+rule green token if all shapes are convex, red token if any shape is concave
+grid 13 13
+spawn disc 2 at 2 2 color 4
+spawn Lshape 3 at 2 8 color 8
+spawn square 2 at 9 4 color 6
+hold 1
+cut
+classify all by convex into 3 2 at 0 0 size 2
+snap 1
+=== example ===
+rule green token if all shapes are convex, red token if any shape is concave
+grid 11 14
+spawn triangle 4 at 2 2 color 7
+spawn diamond 2 at 2 9 color 5
+hold 1
+cut
+classify all by convex into 3 2 at 0 0 size 2
+snap 1
+=== example ===
+rule green token if all shapes are convex, red token if any shape is concave
+grid 12 12
+spawn frame 3 3 at 3 3 color 6
+spawn square 2 at 3 8 color 4
+hold 1
+cut
+classify all by convex into 3 2 at 0 0 size 2
+snap 1
+=== test ===
+rule green token if all shapes are convex, red token if any shape is concave
+grid 13 11
+spawn plus 3 at 2 2 color 5
+spawn notch 3 at 7 5 color 8
+hold 1
+cut
+classify all by convex into 3 2 at 0 0 size 2
+snap 1

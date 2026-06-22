@@ -1,0 +1,19 @@
+name more vs less
+# MORE vs LESS (comparison of quantity): two columns of falling dots. The LEFT column
+# gets 6 dots, the RIGHT column gets 2. They stack into two bars; the left bar is
+# visibly taller -> "more". Direct height comparison makes the inequality readable.
+grid 14 16
+gravity down 1
+walls floor
+# LEFT column (col 4): 6 dots = MORE
+spawn dot at 0 4 color 3 grav 1
+spawn dot at 2 4 color 3 grav 1
+spawn dot at 4 4 color 3 grav 1
+spawn dot at 6 4 color 3 grav 1
+spawn dot at 8 4 color 3 grav 1
+spawn dot at 10 4 color 3 grav 1
+# RIGHT column (col 11): 2 dots = LESS
+spawn dot at 0 11 color 2 grav 1
+spawn dot at 2 11 color 2 grav 1
+run 16
+hold 6

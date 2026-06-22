@@ -1,0 +1,12 @@
+# TASK (inverse grid): cells are FRAMES (coloured border, empty inside) — fill the missing frames.
+rule fill the missing framed cells so the grid is complete
+concept grid holes fill inverse border
+vary flip rot zoom color
+grid 16 16
+bg 0
+seed 1
+lattice 3 3 cell 4 gap 1 color 8 holes 2 outline   # 3x3 grid of FRAMES, 2 missing
+hold 1                                               # IN: framed grid with holes
+cut
+fill                                                  # OUT: holes filled (as frames)
+snap 1

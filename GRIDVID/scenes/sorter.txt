@@ -1,0 +1,14 @@
+name sorter
+# kids' shape-sorter: pieces spawn at random and travel to their matching hole,
+# then snap/lock in place (goal-directed motion + shape matching). Seed varies layout.
+grid 20 20
+seed 3
+sort on
+hole square 3 at 2 2 id H1 color 5
+hole plus 3 at 2 15 id H2 color 5
+hole diamond 2 at 14 9 id H3 color 5
+spawn square 3 random color 2 target H1
+spawn plus 3 random color 6 target H2
+spawn diamond 2 random color 7 target H3
+run 34
+hold 4

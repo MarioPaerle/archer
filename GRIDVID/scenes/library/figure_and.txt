@@ -1,0 +1,13 @@
+# RULE: keep only the cells the two figures SHARE (AND / intersection).
+rule keep only the cells where the two figures overlap (AND / intersection)
+concept boolean figure-algebra and intersection combine
+difficulty 0.65
+grid rand 12 15 10 12
+seed 1
+spawn square rand 3 5 at 1 1 color rand 2 8 id A
+spawn diamond rand 2 3 at 1 7 color rand 2 8 id B
+hold 1
+cut
+combine A B op and into 1 1 color 3
+snap 1
+vary flip rot

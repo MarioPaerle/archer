@@ -1,0 +1,18 @@
+name shape-sorter toy
+# Classic kids' shape-sorter: a board with shaped CUT-OUT holes; matching pieces
+# spawn at random below and each glides up into its own hole and snaps in.
+# Each hole has an id; each piece names the hole it belongs to via `target`.
+grid 24 22
+seed 5
+sort on
+board 7 24 at 0 0 color 5
+hole square 3 at 2 2 id sq color 0
+hole triangle 4 at 1 9 id tr color 0
+hole disc 2 at 2 15 id ci color 0
+hole plus 3 at 2 20 id pl color 0
+spawn square 3 random 12 0 21 23 color 2 target sq
+spawn triangle 4 random 12 0 21 23 color 3 target tr
+spawn disc 2 random 12 0 21 23 color 8 target ci
+spawn plus 3 random 12 0 21 23 color 6 target pl
+run 40
+hold 4

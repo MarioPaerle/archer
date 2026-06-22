@@ -1,0 +1,6 @@
+name voronoi
+# segmentation prior: regions by nearest seed, borders mark the edges; seeds drift
+grid 24 24
+seed 7
+voronoi 7 borders 0 drift
+run 30

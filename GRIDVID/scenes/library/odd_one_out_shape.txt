@@ -1,0 +1,16 @@
+# RULE: mark the odd-one-out by SHAPE — three are the same kind, one is different. Recolour the different one.
+# Input colours (5..9) never equal the answer colour (2), so the recolour is always visible.
+rule recolour the single shape whose form differs from the others (the odd one out)
+concept odd-one-out selection classification shape minority
+difficulty 0.6
+grid rand 16 20 7 9
+seed 1
+spawn square rand 2 3 color rand 5 9 random 1 1 6 4
+spawn square rand 2 3 color rand 5 9 random 1 5 6 9
+spawn plus 3 color rand 5 9 random 1 10 6 14
+spawn square rand 2 3 color rand 5 9 random 1 15 6 19
+hold 1
+cut
+recolor odd by shape tint 2
+snap 1
+vary flip rot

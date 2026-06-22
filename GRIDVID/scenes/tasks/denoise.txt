@@ -1,0 +1,14 @@
+# TASK: remove the scattered noise, keep the solid shape.
+# The noise is FREE content (scatter) — it is not a function of the shape; it just varies per example.
+rule remove the scattered single-cell noise and keep the solid shape
+concept denoising segmentation
+vary flip rot zoom color
+grid 14 12
+bg 0
+seed 1
+spawn square rand 3 4 random 4 4 8 8 color rand id s
+scatter 14 color rand box 0 0 11 13   # free noise sprinkled here and there
+hold 1                 # IN: shape + noise
+cut
+remove shape noise     # OUT: clean shape
+snap 1

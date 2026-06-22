@@ -1,0 +1,11 @@
+rule move the object to the top-left corner
+concept spatial positioning movement
+vary flip rot zoom color
+grid 12 10
+bg 0
+seed 1
+spawn square rand 2 4 random 4 3 10 8 color rand 2 8 id obj
+hold 1
+cut
+move obj to 0 0
+snap 1

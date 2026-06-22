@@ -1,0 +1,8 @@
+name object permanence occluded counter motion
+grid 28 16
+walls none
+spawn dot at 5 0 color 2 vel 0 1 ghost 1 layer 0
+spawn dot at 9 27 color 4 vel 0 -1 ghost 1 layer 0
+spawn rect 10 8 at 3 10 color 5 layer 1
+run 34
+hold 6

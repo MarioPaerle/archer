@@ -1,0 +1,17 @@
+name noisy scattered sorter a
+grid 30 24
+seed 21
+noise uniform colors 0 5 probs 0.82 0.18
+sort on
+hole square 3 at 2 2 id sq1 color 5
+hole triangle 4 at 2 20 id tri1 color 5
+hole plus 5 at 9 12 id plus1 color 5
+hole Lshape 4 at 16 4 id l1 color 5
+hole diamond 2 at 16 22 id dia1 color 5
+spawn square 3 at 6 2 color 2 target sq1
+spawn triangle 4 at 6 16 color 3 target tri1
+spawn plus 5 at 5 8 color 4 target plus1
+spawn Lshape 4 at 12 8 color 6 target l1
+spawn diamond 2 at 12 18 color 8 target dia1
+run 5
+hold 8

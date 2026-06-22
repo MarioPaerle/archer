@@ -1,0 +1,13 @@
+rule the object shatters into fragments, which then arrange by size
+concept shatter ordering physics
+difficulty 0.72
+vary color
+grid rand 12 16 10 14
+bg 0
+spawn square rand 3 4 random 2 4 2 8 color rand 1 8 id a
+shatter a
+run 5
+hold 1
+cut
+arrange all by size at 1 1 dir h
+snap 1

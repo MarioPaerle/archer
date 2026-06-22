@@ -1,0 +1,12 @@
+name collider lesson hit bounce shape transfer
+grid 36 22
+walls none
+spawn line 36 at 10 0 color 5
+spawn rect 5 2 at 3 24 color 5
+spawn rect 2 4 at 5 3 color 3 vel 0 2 bounce 1
+run 20
+hold 5
+spawn rect 5 2 at 15 24 color 5
+spawn plus 3 at 16 4 color 8 vel 0 2 bounce 1
+run 20
+hold 8

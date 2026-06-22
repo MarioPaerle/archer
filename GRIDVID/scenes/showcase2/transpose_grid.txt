@@ -1,0 +1,11 @@
+rule transpose the grid across the main diagonal
+concept grid transpose
+difficulty 0.62
+vary color
+grid 9 9
+bg 0
+seed 11
+scatter rand 5 8 color rand 1 9 box 0 0 8 8
+hold 1
+cut
+grid_flip diagonal

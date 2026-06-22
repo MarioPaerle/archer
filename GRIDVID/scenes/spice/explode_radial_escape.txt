@@ -1,0 +1,13 @@
+rule the object explodes into fragments that scatter radially and bounce off walls
+concept explosion physics with collision
+difficulty 0.7
+vary color
+grid 14 14
+bg 0
+walls box
+seed 1
+spawn square 3 random 5 5 10 10 color rand 1 8 id obj
+hold 1
+explode obj speed 2
+cut
+run 8

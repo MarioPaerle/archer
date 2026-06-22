@@ -1,0 +1,8 @@
+name cartoon-spin
+# spinning toys: shapes rotate in place + one bounces through (rotation prior)
+grid 18 14
+walls box
+spawn Lshape 4 at 5 3 color 6 spin 1
+spawn Tshape 4 at 2 10 color 4 spin 1
+spawn disc 1 at 7 8 color 2 vel 0 1 bounce 1
+run 24

@@ -1,0 +1,15 @@
+# TASK (dynamic, OUT = video): given the start, predict the whole fall.
+# Each instance drops a similar object from a different position/height,
+# so the fall lasts more or fewer frames — the model must learn the dynamics.
+rule the object falls straight down under gravity until it rests on the floor
+concept gravity physics prediction
+vary color zoom
+grid 12 16
+bg 0
+seed 1
+gravity down 1
+walls floor
+spawn square 2 random 0 1 5 9 color rand grav 1
+hold 1          # IN: a single frame — the object at its start position
+cut
+run 16          # OUT: the full fall, until it settles on the floor

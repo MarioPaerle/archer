@@ -1,0 +1,21 @@
+# RULE: convex shapes are kept and turn green (3); concave shapes (L / frame / notch)
+# turn red (2). The detector is `convex` (hull == filled).
+rule convex shapes turn green, concave shapes turn red
+concept dispatch predicate convexity classification conditional
+difficulty 0.6
+grid rand 15 18 15 18
+seed 1
+spawn disc 2 color rand 4 8 random 1 1 6 6
+spawn plus 3 color rand 4 8 random 1 9 6 13
+spawn Lshape 3 color rand 4 8 random 9 1 13 6
+spawn notch 3 color rand 4 8 random 9 9 13 13
+hold 1
+cut
+dispatch all by convex
+  case yes
+    recolor it tint 3
+  case no
+    recolor it tint 2
+end
+snap 1
+vary flip rot zoom

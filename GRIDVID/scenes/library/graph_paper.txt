@@ -1,0 +1,13 @@
+# TASK (inverse grid = graph paper): keep the coloured grid lines, remove the dots in the cells.
+rule remove the scattered dots and keep the squared-paper grid lines
+concept grid inverse denoising
+vary flip color
+grid 15 15
+bg 0
+seed 1
+mesh 3 3 color 8                          # the INVERSE grid: the lines are coloured (cells are background)
+scatter rand 3 7 color 2 box 1 1 13 13   # dots dropped inside the cells
+hold 1                                     # IN: grid lines + dots
+cut
+remove shape noise                         # OUT: just the grid
+snap 1

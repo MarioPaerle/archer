@@ -1,0 +1,13 @@
+rule the object shatters and the fragments fall to the floor
+concept breaking shatter gravity physics
+difficulty 0.7
+vary color
+grid 14 12
+bg 0
+walls floor
+seed 1
+spawn square rand 3 4 random 1 3 3 8 color rand 1 8 id s
+hold 1
+shatter s
+cut
+run 9

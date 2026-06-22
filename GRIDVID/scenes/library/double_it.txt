@@ -1,0 +1,12 @@
+# TASK: double the object — every cell becomes a 2x2 block (2x2 -> 4x4).
+rule double the object so each of its cells becomes a 2x2 block
+concept scaling double
+vary flip color
+grid 16 16
+bg 0
+seed 1
+spawn Lshape rand 2 3 random 1 1 4 6 color rand id s
+hold 1                  # IN: the object
+cut
+double s factor 2       # OUT: doubled in place
+snap 1

@@ -1,0 +1,12 @@
+name kidset pinball bumpers
+grid 24 18
+seed 9
+walls box
+spawn dot at 2 3 color 8 vel 1 1 bounce 1
+spawn dot at 14 20 color 6 vel -1 -1 bounce 1
+spawn square 2 at 6 7 color 5
+spawn square 2 at 10 15 color 5
+spawn line 5 at 15 5 color 4
+spawn line 5 at 3 14 color 3
+run 54
+hold 5

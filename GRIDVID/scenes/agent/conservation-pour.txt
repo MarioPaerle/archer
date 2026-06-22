@@ -1,0 +1,20 @@
+name conservation pour
+# CONSERVATION of quantity: the SAME amount of liquid (same source rate, same time)
+# poured into two containers of different width. The NARROW well (left) fills HIGH; the
+# WIDE basin (right) fills LOW. Same "stuff", just rearranged — a tall thin column holds
+# the same quantity as a short wide pool. The shape changes, the amount is conserved.
+grid 26 24
+gravity down 1
+walls box
+# LEFT: a narrow, tall U (interior 2 wide) with a floor -> liquid climbs HIGH
+spawn line 19 v at 3 4 color 5
+spawn line 19 v at 3 7 color 5
+spawn line 4 at 21 4 color 5
+source at 1 5 color 8 rate 2
+# RIGHT: a wide, shallow U (interior 6 wide) with a floor -> liquid stays LOW
+spawn line 19 v at 3 13 color 5
+spawn line 19 v at 3 20 color 5
+spawn line 8 at 21 13 color 5
+source at 1 16 color 8 rate 2
+run 66
+hold 4

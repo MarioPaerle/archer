@@ -1,0 +1,13 @@
+rule objects fall, settle, then the whole grid is transposed
+concept gravity transpose physics whole-grid
+difficulty 0.74
+vary color
+grid rand 13 16 12 16
+bg 0
+walls floor
+spawn square rand 2 4 random 0 2 2 6 color rand 1 8 grav 1
+spawn rect 3 5 random 0 8 2 12 color rand 1 8 grav 1
+run 7
+hold 1
+cut
+grid_flip diagonal

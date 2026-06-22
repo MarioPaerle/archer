@@ -1,0 +1,9 @@
+name well
+grid 22 16
+seed 1
+well at 8 11 strength 1 color 9
+spawn disc 1 random 0 0 15 21 color 2
+spawn disc 1 random 0 0 15 21 color 3
+spawn disc 1 random 0 0 15 21 color 4
+spawn disc 1 random 0 0 15 21 color 8
+run 26

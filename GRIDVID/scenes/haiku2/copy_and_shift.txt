@@ -1,0 +1,11 @@
+rule duplicate the object and place it to the right
+concept copying duplication offset
+vary flip rot zoom color
+grid 14 10
+bg 0
+seed 1
+spawn rect rand 2 3 random 2 1 6 7 color rand 3 7 id shape
+hold 1
+cut
+copy shape to by 0 6
+snap 1

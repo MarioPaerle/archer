@@ -1,0 +1,12 @@
+rule the object is pulled toward the gravity well and settles
+concept orbit attraction gravity physics
+difficulty 0.6
+vary color
+grid 13 13
+bg 0
+seed 1
+well at 6 6 strength 1 color 9
+spawn square 2 random 0 0 12 12 color rand 1 8 grav 1 id s
+hold 1
+cut
+run 12

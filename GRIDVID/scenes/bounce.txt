@@ -1,0 +1,6 @@
+name bounce
+# a ball falls and bounces off the floor (gravity + restitution)
+grid 18 18
+gravity down 1
+spawn disc 2 at 0 8 color 3 grav 1 bounce 1
+run 30

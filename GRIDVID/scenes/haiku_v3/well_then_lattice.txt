@@ -1,0 +1,11 @@
+rule the object is pulled into the well, then a lattice replaces the scene
+concept orbit physics lattice
+difficulty 0.73
+vary color
+grid rand 13 17 12 16
+bg 0
+well at 7 7 strength 2 color 9
+spawn rect rand 3 4 rand 4 6 random 0 0 12 12 color rand 1 8 grav 1 id a
+hold 1
+cut
+run 8

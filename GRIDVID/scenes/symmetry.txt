@@ -1,0 +1,7 @@
+# MIRROR — build a symmetric figure from one half (reconstruction substrate).
+grid 12 16
+bg 0
+spawn Lshape 4 at 3 2 color 5 id H
+hold 2                  # BEFORE: only the left half
+mirror H axis v gap 0   # AFTER: reflected copy completes the symmetry
+snap 2

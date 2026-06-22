@@ -1,0 +1,8 @@
+name cartoon-pinball
+# three bouncing balls collide and ricochet — simple movement + collision + bounce
+grid 22 16
+walls box
+spawn disc 2 at 2 3 color 2 vel 1 1 bounce 1
+spawn disc 2 at 12 18 color 3 vel -1 -1 bounce 1
+spawn disc 1 at 8 10 color 8 vel 1 -1 bounce 1
+run 48

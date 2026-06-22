@@ -1,0 +1,6 @@
+name collision
+# two bodies move toward each other and stop on contact (collision, no overlap)
+grid 20 6
+spawn square 2 at 2 0 color 2 vel 0 1
+spawn square 2 at 2 16 color 3 vel 0 -1
+run 14

@@ -1,0 +1,25 @@
+name shadow projection
+# SHADOW / PROJECTION: a wide red bar sits in mid-air. A floor of upward "light rays"
+# (ray shooters along the bottom) shoots UP and stops at the object, so the lit floor
+# cells directly under the bar stay dark while the bar's horizontal extent is cast as a
+# gap/silhouette. The ray length under the bar = the bar's width projected onto the wall.
+grid 16 18
+walls box
+# the casting object: a horizontal bar (its width is what gets projected)
+spawn rect 2 8 at 4 5 color 2
+# vertical rays rise from the bottom row toward the object; each ray stops at first hit,
+# so columns 5..12 (under the bar) get short rays and the rest reach near the top:
+# the SHADOW is the short-ray band beneath the object.
+shooter at 15 5 dir up every 1 beam ray color 7
+shooter at 15 6 dir up every 1 beam ray color 7
+shooter at 15 7 dir up every 1 beam ray color 7
+shooter at 15 8 dir up every 1 beam ray color 7
+shooter at 15 9 dir up every 1 beam ray color 7
+shooter at 15 10 dir up every 1 beam ray color 7
+shooter at 15 11 dir up every 1 beam ray color 7
+shooter at 15 12 dir up every 1 beam ray color 7
+# reference rays OUTSIDE the bar's width reach all the way up (no object to stop them)
+shooter at 15 2 dir up every 1 beam ray color 8
+shooter at 15 15 dir up every 1 beam ray color 8
+run 2
+hold 8

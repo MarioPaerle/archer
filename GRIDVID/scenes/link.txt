@@ -1,0 +1,6 @@
+name link
+grid 20 12
+walls box
+spawn Lshape 3 at 5 2 color 2 vel 1 0 bounce 1 id A
+spawn Lshape 3 at 5 16 color 8 link A
+run 36

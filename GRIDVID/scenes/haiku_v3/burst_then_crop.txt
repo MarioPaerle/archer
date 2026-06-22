@@ -1,0 +1,12 @@
+rule a firework bursts and settles, then the view crops to the debris
+concept burst crop variable-size physics
+difficulty 0.66
+vary color
+grid rand 12 16 12 16
+bg 0
+walls floor
+burst random count rand 10 16 color rand 1 7
+run 6
+hold 1
+cut
+crop pad 1

@@ -1,0 +1,12 @@
+rule complete the lattice grid by filling all holes
+concept grid holes fill
+difficulty 0.62
+vary flip rot color
+grid 13 13
+bg 0
+seed 5
+lattice 3 4 cell 2 gap 1 color 4 holes 4
+hold 1
+cut
+fill
+snap 1

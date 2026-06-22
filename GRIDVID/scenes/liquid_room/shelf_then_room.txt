@@ -1,0 +1,12 @@
+name liquid shelf then room
+grid 26 18
+walls box
+gravity down 1
+liquid viscosity 0 turbulence 0 flow 2
+source at 1 12 color 8 rate 1
+spawn rect 1 7 at 7 9 color 5
+spawn line 15 v at 2 4 color 5
+spawn line 15 v at 2 21 color 5
+spawn line 18 at 16 4 color 5
+run 58
+hold 8

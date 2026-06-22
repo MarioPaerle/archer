@@ -1,0 +1,12 @@
+# TASK: a grid with missing cells — fill the holes so the grid is complete.
+rule fill the missing blocks so the grid lattice is complete
+concept grid holes fill completion
+vary flip rot zoom color
+grid 14 14
+bg 0
+seed 1
+lattice 4 4 cell 2 gap 1 color 8 holes 3   # 4x4 grid of blocks, 3 random holes
+hold 1                                       # IN: the grid with holes
+cut
+fill                                          # OUT: the holes filled in
+snap 1

@@ -1,0 +1,13 @@
+rule objects spin and orbit around a central well
+concept orbital gravity and rotation
+difficulty 0.7
+vary color
+grid 14 14
+bg 0
+walls none
+seed 6
+well at 7 7 strength 2 color 9
+spawn square 2 random 3 5 9 11 color rand 2 8 spin 3 id obj
+hold 1
+cut
+run 10

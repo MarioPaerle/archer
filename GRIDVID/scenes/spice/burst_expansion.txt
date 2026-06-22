@@ -1,0 +1,11 @@
+rule a radial firework burst expands from a point
+concept burst expansion
+difficulty 0.5
+vary color
+grid 13 13
+bg 0
+walls box
+seed 3
+burst random count rand 6 12 color rand 3 8
+cut
+run 6

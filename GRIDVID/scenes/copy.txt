@@ -1,0 +1,8 @@
+# COPY — duplicate an object, transformed. before/after pair via hold.
+grid 14 14
+bg 0
+spawn Lshape 3 at 2 2 color 3 id L
+hold 2                         # BEFORE: just the original
+copy L to 2 8 rot 1 tint 4    # AFTER: a rotated, recolored copy appears
+copy L to 8 2 flip h tint 6   # and a mirrored copy
+snap 2

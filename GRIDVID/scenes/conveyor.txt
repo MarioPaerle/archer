@@ -1,0 +1,9 @@
+name conveyor
+grid 24 14
+walls box
+gravity down 1
+conveyor at 9 2 len 20 dir right color 5
+spawn square 2 at 2 4 color 2 grav 1
+spawn disc 1 at 1 8 color 3 grav 1
+spawn square 2 at 3 11 color 6 grav 1
+run 40

@@ -1,0 +1,11 @@
+rule keep the two coloured lines and crop the view to them
+concept selection crop variable-size
+difficulty 0.6
+vary color shift
+grid rand 10 14 12 16
+bg 0
+spawn line 6 v random 1 4 2 4 color rand 2 5
+spawn line 6 v random 8 11 2 4 color rand 6 9
+hold 1
+cut
+crop pad 0

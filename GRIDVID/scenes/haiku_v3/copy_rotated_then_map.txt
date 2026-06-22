@@ -1,0 +1,13 @@
+rule three rotated copies of the object appear, then the colours are remapped
+concept copy rotation palette composition
+difficulty 0.7
+vary shift
+grid rand 12 16 12 16
+bg 0
+spawn Tshape 3 random 5 8 5 8 color 2 id a
+hold 1
+cut
+copy a by 0 4 rot 1 tint 3
+copy a by 4 0 rot 2 tint 5
+copy a by 4 4 rot 3 tint 6
+snap 1

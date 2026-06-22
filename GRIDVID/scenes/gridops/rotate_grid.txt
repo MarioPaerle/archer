@@ -1,0 +1,12 @@
+# whole-grid: rotate the entire grid 180° — like real ARC 3c9b0459.
+rule rotate the whole grid by 180 degrees
+concept grid rotation whole-grid
+difficulty 0.55
+vary color
+grid 10 10
+bg 0
+seed 1
+noise uniform colors 0 0 5 8
+hold 1
+cut
+grid_rotate 2

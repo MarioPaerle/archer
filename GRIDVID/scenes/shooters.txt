@@ -1,0 +1,9 @@
+name shooters
+# three beam types: bolt (projectile), ray (laser to first hit), spread (3-way)
+grid 28 16
+walls none
+shooter at 8 0 dir right every 3 beam bolt color 2 speed 1
+shooter at 4 0 dir right every 6 beam ray color 7
+shooter at 12 0 dir right every 5 beam spread color 6 speed 1
+spawn square 3 at 7 22 color 5
+run 34

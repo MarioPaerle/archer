@@ -1,0 +1,11 @@
+rule a square follows a winding path
+concept path following with motion
+difficulty 0.65
+vary color
+grid 15 10
+bg 0
+seed 4
+path random 16 color 4 walk 3
+run 2
+cut
+run 9

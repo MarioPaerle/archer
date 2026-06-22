@@ -1,0 +1,5 @@
+name life
+grid 24 20
+seed 3
+life density 0.4 color 3
+run 30

@@ -1,0 +1,11 @@
+name liquid room fill simple
+grid 18 14
+walls box
+gravity down 1
+liquid viscosity 0 turbulence 0 flow 2
+source at 1 9 color 8 rate 1
+spawn line 9 v at 4 4 color 5
+spawn line 9 v at 4 14 color 5
+spawn line 11 at 12 4 color 5
+run 48
+hold 8

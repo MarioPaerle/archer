@@ -1,0 +1,17 @@
+name noisy scattered sorter b
+grid 32 24
+seed 33
+noise uniform colors 0 5 probs 0.78 0.22
+sort on
+hole notch 5 at 1 3 id notch_home color 5
+hole bump 5 at 15 23 id bump_home color 5
+hole rect 2 5 at 10 2 id bar_home color 5
+hole Tshape 5 at 3 22 id tee_home color 5
+hole ring 5 at 15 4 id ring_home color 5
+spawn notch 5 at 5 7 color 2 target notch_home
+spawn bump 5 at 11 19 color 4 target bump_home
+spawn rect 2 5 at 13 5 color 7 target bar_home
+spawn Tshape 5 at 7 18 color 3 target tee_home
+spawn ring 5 at 19 8 color 8 target ring_home
+run 5
+hold 8

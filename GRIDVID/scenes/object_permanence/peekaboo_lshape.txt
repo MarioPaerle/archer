@@ -1,0 +1,7 @@
+name object permanence peekaboo lshape
+grid 28 16
+walls none
+spawn Lshape 4 at 6 0 color 6 vel 0 1 ghost 1 layer 0
+spawn frame 8 8 at 4 10 color 5 layer 1
+run 36
+hold 6

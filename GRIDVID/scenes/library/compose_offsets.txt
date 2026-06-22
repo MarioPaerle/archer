@@ -1,0 +1,13 @@
+rule add two recoloured offset copies of the object
+concept composition copy
+difficulty 0.74
+vary color shift
+grid 12 12
+bg 0
+seed 13
+spawn square 2 random 2 2 7 7 color rand 3 8 id obj
+hold 1
+cut
+copy obj by 3 3 tint 6
+copy obj by 5 5 tint 2
+snap 1

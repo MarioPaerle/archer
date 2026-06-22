@@ -1,0 +1,12 @@
+# whole-grid: transpose the grid (reflect across the main diagonal) — like real ARC 74dd1130.
+rule transpose the whole grid: output[r][c] = input[c][r]
+concept grid transpose whole-grid
+difficulty 0.6
+vary color
+grid 10 10
+bg 0
+seed 1
+noise uniform colors 0 0 2 3 4
+hold 1
+cut
+grid_flip diagonal

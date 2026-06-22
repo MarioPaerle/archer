@@ -1,0 +1,12 @@
+rule a firework bursts radially from a random point
+concept radial burst explosion physics
+difficulty 0.62
+vary color
+grid 15 15
+bg 0
+walls box
+seed 1
+burst random count rand 6 10 color rand 1 8 speed 1
+run 2
+cut
+run 7

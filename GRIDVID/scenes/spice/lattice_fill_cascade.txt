@@ -1,0 +1,13 @@
+rule fill a grid lattice, then cascade down with gravity
+concept structured decay and settling
+difficulty 0.65
+vary color
+grid 14 14
+bg 0
+walls floor
+seed 9
+lattice 4 4 cell 2 gap 1 color rand 3 7 holes 2
+hold 1
+gravity down 1
+cut
+run 8

@@ -1,0 +1,12 @@
+rule remove the smallest object, keep the largest
+concept selection size comparison
+vary flip rot zoom color
+grid 13 11
+bg 0
+seed 1
+spawn square rand 1 3 random 1 2 5 8 color rand 4 6 id small
+spawn square rand 4 6 random 6 1 11 9 color rand 2 5 id large
+hold 1
+cut
+remove small
+snap 1

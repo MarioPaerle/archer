@@ -1,0 +1,14 @@
+# RULE (paper-folding, VZ-2): the IN is a paper folded into quarters with holes punched in the visible
+# quarter; unfolding mirrors every hole across BOTH fold lines → it appears in all four quarters.
+rule unfold the folded paper: every punched hole is mirrored across both fold lines (appears in 4 quarters)
+concept paper-folding unfold symmetry spatial reflection whole-grid
+difficulty 0.72
+grid 11 11
+seed 1
+spawn dot color rand 2 8 random 1 1 4 4
+spawn dot color rand 2 8 random 1 1 4 4
+spawn dot color rand 2 8 random 1 1 4 4
+hold 1
+cut
+unfold v at 5 h at 5
+vary zoom

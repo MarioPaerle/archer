@@ -1,0 +1,13 @@
+# TASK (comparison > <): two groups of cells — output a marker in the colour of the BIGGER group.
+rule output one cell coloured like whichever group has more cells
+concept counting comparison greater
+vary flip zoom
+grid 12 10
+bg 0
+seed 1
+scatter rand 2 6 color 2 box 0 0 4 9    # red group (size varies)
+scatter rand 2 6 color 3 box 7 0 11 9   # green group (size varies)
+hold 1
+cut
+keep_bigger 2 3 at 5 5                    # OUT: a 2x2 block in the majority colour
+snap 1

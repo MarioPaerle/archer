@@ -1,0 +1,5 @@
+name convex-concave
+grid 14 16
+spawn notch 5 at 9 4 color 5 magnet 1
+spawn bump 5 at 1 4 color 2 magnet 1
+run 20

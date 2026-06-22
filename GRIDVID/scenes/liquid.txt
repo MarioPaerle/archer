@@ -1,0 +1,8 @@
+name liquid
+# a liquid source pours down, flows around objects, and pools (falling-sand/water CA)
+grid 22 18
+gravity down 1
+source at 0 11 color 8 rate 1
+spawn rect 2 7 at 9 7 color 5
+spawn square 3 at 14 2 color 5
+run 44

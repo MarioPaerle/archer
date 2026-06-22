@@ -1,0 +1,11 @@
+rule rotate the whole grid 180 degrees
+concept grid rotation
+difficulty 0.6
+vary color
+grid 10 10
+bg 0
+seed 15
+scatter rand 5 8 color rand 1 9 box 0 0 9 9
+hold 1
+cut
+grid_rotate 2

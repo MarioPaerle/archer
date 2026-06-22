@@ -1,0 +1,5 @@
+name wave
+grid 26 16
+wave color 8 amp 4 period 8
+wave color 6 amp 3 period 5
+run 28

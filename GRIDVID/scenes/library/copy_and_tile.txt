@@ -1,0 +1,12 @@
+rule copy the shape along a diagonal
+concept copy tile
+difficulty 0.70
+vary color shift zoom
+grid 12 12
+bg 0
+seed 6
+spawn rect 2 3 random 1 1 5 4 color rand 3 7 id tile
+hold 1
+cut
+copy tile by 2 2 times 2 2 2
+snap 1

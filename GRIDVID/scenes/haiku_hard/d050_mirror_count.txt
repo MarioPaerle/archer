@@ -1,0 +1,16 @@
+rule count the total number of objects in the mirrored grid
+concept composition mirroring counting aggregation
+vary color zoom shift
+difficulty 0.50
+grid 14 12
+bg 0
+seed 1
+walls none
+spawn square 2 at 2 1 color 2
+spawn square 2 at 2 5 color 2
+spawn dot at 6 2 color 4
+hold 1
+cut
+mirror color 2 axis v gap 2 tint 2
+tally shape square at 10 4 color 5 dir h
+snap 1

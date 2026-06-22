@@ -1,0 +1,6 @@
+name reflect
+grid 22 16
+walls box
+shooter at 8 1 dir right every 8 beam bolt color 2 speed 1 bounce 1
+shooter at 3 1 dir right every 12 beam bolt color 6 speed 1 bounce 1
+run 50

@@ -1,0 +1,15 @@
+# selection by extreme: recolor the smallest object.
+rule recolor the smallest object to blue
+concept selection size extreme
+difficulty 0.4
+vary flip rot color
+grid 12 12
+bg 0
+seed 1
+spawn square rand 2 4 random 0 0 5 5 color rand 3 9 id a
+spawn square rand 2 4 random 6 0 11 5 color rand 3 9 id b
+spawn square rand 2 4 random 0 6 5 11 color rand 3 9 id c
+hold 1
+cut
+recolor smallest tint 1
+snap 1

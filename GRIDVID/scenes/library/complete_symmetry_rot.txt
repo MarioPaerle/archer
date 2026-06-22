@@ -1,0 +1,13 @@
+# RULE: the IN shows part of a 180°-rotationally-symmetric pattern; complete it (each mark has a
+# partner under a 180° rotation about the centre). Shapes/colours/positions vary per example.
+rule complete the 180-degree rotational symmetry
+concept symmetry completion matrix-completion rotation raven whole-grid
+difficulty 0.7
+grid rand 12 14 10 12
+seed 1
+spawn Lshape 3 color rand 2 8 random 1 1 4 5
+spawn plus 3 color rand 2 8 random 1 6 4 10
+hold 1
+cut
+grid_complete rot180
+vary zoom

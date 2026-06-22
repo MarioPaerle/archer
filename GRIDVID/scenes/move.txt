@@ -1,0 +1,5 @@
+name move
+# a single object travels across the grid at constant velocity (objectness + motion)
+grid 18 12
+spawn square 3 at 4 0 color 2 vel 0 1
+run 14

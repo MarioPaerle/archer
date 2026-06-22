@@ -1,0 +1,10 @@
+name kidset snack snake
+grid 24 18
+seed 11
+walls box
+snake at 9 7 len 5 color 3 food 2
+spawn rect 1 6 at 4 4 color 5
+spawn rect 1 5 at 13 13 color 5
+spawn square 2 at 6 18 color 7
+run 70
+hold 5

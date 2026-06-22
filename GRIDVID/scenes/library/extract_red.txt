@@ -1,0 +1,16 @@
+# TASK (static): keep only the red objects, drop everything else.
+rule keep only the color-2 (red) objects; remove all others
+concept selection extraction color
+vary flip rot zoom
+grid rand 12 16 9 12
+bg 0
+seed 1
+walls none
+spawn square 2 random 1 1 7 11 color 2
+spawn square 2 random 1 1 7 11 color rand 3 9
+spawn dot     random 1 1 7 11 color 2
+spawn Lshape 3 random 1 1 7 11 color rand 3 9
+hold 1          # IN: a scatter of objects
+cut
+extract color 2 # the rule
+snap 1          # OUT: only red survives

@@ -1,0 +1,13 @@
+rule objects settle under gravity, then a lattice is laid over them
+concept physics structure gravity lattice
+difficulty 0.72
+vary rot flip color
+grid rand 11 14 12 16
+bg 0
+gravity down 1
+spawn square rand 2 5 random 2 2 4 12 color rand 1 7 grav 1
+spawn rect 3 4 random 1 3 4 10 color rand 2 6 grav 1
+run 8
+hold 1
+cut
+lattice 4 3 holes 2 outline irregular

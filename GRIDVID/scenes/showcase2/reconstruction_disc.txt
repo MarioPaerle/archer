@@ -1,0 +1,13 @@
+rule restore the broken disc by filling missing cells
+concept reconstruction
+difficulty 0.65
+vary flip rot color zoom
+grid 11 11
+bg 0
+seed 4
+spawn disc 4 random 2 2 8 8 color 5 id circ
+break circ cells 5
+hold 1
+cut
+repair
+snap 1

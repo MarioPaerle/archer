@@ -1,0 +1,11 @@
+name analogy bounce color pair
+grid 34 18
+walls box
+spawn dot at 3 3 color 8 vel 1 1 bounce 1
+spawn square 2 at 6 15 color 5
+run 24
+hold 4
+spawn dot at 11 3 color 6 vel 1 1 bounce 1
+spawn square 2 at 14 15 color 5
+run 24
+hold 8

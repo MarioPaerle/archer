@@ -1,0 +1,7 @@
+name object permanence collide horizontal
+grid 24 12
+walls box
+spawn square 3 at 5 1 color 2 vel 0 1 bounce 0
+spawn square 3 at 5 20 color 3 vel 0 -1 bounce 0
+run 24
+hold 6

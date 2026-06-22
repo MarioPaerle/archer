@@ -1,0 +1,8 @@
+name object permanence behind pillars
+grid 28 14
+walls none
+spawn square 2 at 6 0 color 4 vel 0 1 ghost 1 layer 0
+spawn rect 8 3 at 3 7 color 5 layer 1
+spawn rect 8 3 at 3 17 color 5 layer 1
+run 34
+hold 6

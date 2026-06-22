@@ -1,0 +1,14 @@
+rule arrange the objects in a row ordered from smallest to largest
+concept ordering size sorting
+difficulty 0.66
+vary flip color
+grid 18 9
+bg 0
+seed 1
+spawn square rand 1 5 random 1 1 7 16 color rand 1 8 id a
+spawn square rand 1 5 random 1 1 7 16 color rand 1 8 id b
+spawn square rand 1 5 random 1 1 7 16 color rand 1 8 id c
+hold 1
+cut
+arrange all by size at 6 1 gap 1 dir h
+snap 1

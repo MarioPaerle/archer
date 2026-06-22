@@ -1,0 +1,6 @@
+name odometer
+# modular counting: every 3 reds carry into 1 yellow, every 3 yellows into 1 green (base 3)
+grid 18 14
+gravity down 1
+counter at 0 2 base 3 colors 2 4 3 every 3 gap 5
+run 80

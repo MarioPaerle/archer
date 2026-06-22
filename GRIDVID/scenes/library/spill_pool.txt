@@ -1,0 +1,13 @@
+# TASK (fluid physics): water pours down, splits around the floating block, and pools. Predict the pool.
+rule water pours straight down, flows around the floating block, and pools on the floor
+concept fluid physics prediction
+difficulty 0.45
+vary color
+grid 18 20
+bg 0
+walls floor
+spawn rect 2 6 random 8 4 12 11 color 5 id block   # a floating obstacle at a random spot per example
+spill at 0 9 color 8 rate 2
+run 3                 # IN: the pour has just begun
+cut
+run 24                # OUT: the water has split around the block and pooled

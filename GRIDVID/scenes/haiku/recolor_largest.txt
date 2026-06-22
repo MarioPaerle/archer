@@ -1,0 +1,13 @@
+rule recolor the largest object to color 4 (magenta); leave all others unchanged
+concept selection size comparison recoloring
+vary flip rot zoom color
+grid 12 10
+bg 0
+seed 1
+spawn square rand 1 3 at 2 2 color 3
+spawn square rand 1 3 at 2 6 color 2
+spawn rect rand 1 2 rand 1 2 at 6 3 color 5
+hold 1
+cut
+recolor largest tint 4
+snap 1

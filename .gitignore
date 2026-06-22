@@ -1,0 +1,31 @@
+# ============================================================================
+# archer — public repo: CODE + light DOCS only.
+# The full research KB (SOURCES papers, ARC dataset, methods, conversations)
+# stays local on the Mac; agents on CINECA get it from there. Keep this lean.
+# ============================================================================
+
+# --- research KB & data (kept local; not published) ---
+SOURCES/
+DATASET/
+METHODS/
+AGENTS/
+CONVERSATIONS/
+FLYWHEEL/
+DSL/plots/
+DSL/solutions/
+
+# --- build artifacts & deps (regenerable; never commit) ---
+**/node_modules/
+GRIDVID/src-tauri/target/
+GRIDVID/dist/
+**/out/
+output/
+*.log
+
+# --- python / misc ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+**/.DS_Store

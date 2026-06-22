@@ -1,0 +1,9 @@
+name object permanence collision then hide
+grid 30 14
+walls box
+spawn square 3 at 5 1 color 2 vel 0 1 bounce 0
+spawn square 3 at 5 12 color 3 vel 0 -1 bounce 0
+spawn rect 7 5 at 3 21 color 5 layer 2
+spawn dot at 7 16 color 8 vel 0 1 ghost 1 layer 1
+run 34
+hold 6

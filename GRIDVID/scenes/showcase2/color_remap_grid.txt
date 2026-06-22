@@ -1,0 +1,11 @@
+rule remap colours of the whole grid by a fixed map
+concept grid map
+difficulty 0.60
+vary shift
+grid 10 10
+bg 0
+seed 8
+scatter rand 6 12 color rand 2 4 box 1 1 8 8
+hold 1
+cut
+grid_map 2 1 3 7 4 6

@@ -1,0 +1,8 @@
+name magnets-group
+grid 24 12
+walls box
+spawn square 2 at 2 1 color 2 magnet 1
+spawn square 2 at 2 19 color 3 magnet 1
+spawn disc 2 at 9 2 color 6 magnet 2
+spawn disc 2 at 9 18 color 8 magnet 2
+run 26

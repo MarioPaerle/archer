@@ -1,0 +1,14 @@
+rule arrange the bars in a row ordered from shortest to longest
+concept counting ordering rank cardinality
+difficulty 0.68
+vary flip color
+grid 18 9
+bg 0
+seed 1
+spawn rect 1 rand 2 7 random 1 1 7 10 color rand 1 8 id a
+spawn rect 1 rand 2 7 random 1 1 7 10 color rand 1 8 id b
+spawn rect 1 rand 2 7 random 1 1 7 10 color rand 1 8 id c
+hold 1
+cut
+arrange all by size at 6 1 gap 1 dir h
+snap 1

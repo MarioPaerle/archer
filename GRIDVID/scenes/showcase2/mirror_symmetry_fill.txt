@@ -1,0 +1,12 @@
+rule mirror the pattern downward across the horizontal axis
+concept mirror symmetry
+difficulty 0.68
+vary color shift zoom
+grid 16 12
+bg 0
+seed 2
+spawn Lshape rand 3 4 random 1 1 4 6 color rand 2 6 id pat
+hold 1
+cut
+mirror pat axis h gap 1
+snap 1

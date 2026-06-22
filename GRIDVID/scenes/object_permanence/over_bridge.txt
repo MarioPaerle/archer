@@ -1,0 +1,7 @@
+name object permanence over bridge
+grid 24 12
+walls none
+spawn rect 3 10 at 5 7 color 5 layer 1
+spawn dot at 6 0 color 8 vel 0 1 ghost 1 layer 2
+run 28
+hold 6

@@ -1,0 +1,13 @@
+# TASK: the shape has missing cells — fill them in to restore it.
+rule fill in the missing cells to restore the complete solid shape
+concept reconstruction completion shape
+vary flip rot zoom color
+grid 12 12
+bg 0
+seed 1
+spawn square rand 3 5 random 1 1 6 6 color rand id s   # position AND size vary per example
+break s cells 4     # knock out random cells → a holed shape
+hold 1              # IN: the broken shape
+cut
+repair              # OUT: the whole shape restored
+snap 1

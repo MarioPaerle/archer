@@ -1,0 +1,7 @@
+name gravity
+# objects fall under gravity and rest on the floor (gravity + support)
+grid 16 16
+gravity down 1
+spawn square 3 at 0 6 color 2 grav 1
+spawn rect 2 5 at 0 1 color 4 grav 1
+run 16

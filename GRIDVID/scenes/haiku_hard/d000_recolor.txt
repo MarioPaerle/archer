@@ -1,0 +1,12 @@
+rule recolor the single dot to blue
+concept recolor color
+vary none
+difficulty 0.00
+grid 8 8
+bg 0
+seed 1
+spawn dot at 4 4 color 1
+hold 1
+cut
+recolor shape dot tint 1
+snap 1

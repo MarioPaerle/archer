@@ -1,0 +1,15 @@
+name liquid two buckets
+grid 30 20
+walls box
+gravity down 1
+liquid viscosity 0 turbulence 0 flow 2
+source at 1 7 color 8 rate 1
+source at 1 22 color 8 rate 1
+spawn line 11 v at 7 3 color 5
+spawn line 11 v at 7 12 color 5
+spawn line 10 at 17 3 color 5
+spawn line 11 v at 7 18 color 5
+spawn line 11 v at 7 27 color 5
+spawn line 10 at 17 18 color 5
+run 58
+hold 8

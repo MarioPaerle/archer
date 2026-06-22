@@ -1,0 +1,13 @@
+# inside/outside: colour the cells enclosed by the hollow shape.
+rule fill the inside of the hollow frame
+concept inside outside enclosure
+difficulty 0.3
+vary flip color
+grid 14 12
+bg 0
+seed 1
+spawn frame rand 4 6 rand 4 6 random 1 1 6 6 color rand 5 9 id f
+hold 1
+cut
+mark_enclosed 2
+snap 1

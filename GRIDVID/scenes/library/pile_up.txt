@@ -1,0 +1,17 @@
+# physics: objects fall under gravity and pile on the floor.
+rule the objects fall under gravity and pile up on the floor
+concept gravity physics stacking
+difficulty 0.4
+vary color
+grid rand 10 14 12 16
+bg 0
+seed 1
+gravity down 1
+walls floor
+spawn square 2 random 0 1 2 3 color rand grav 1
+spawn square 2 random 0 5 2 7 color rand grav 1
+spawn square 2 random 0 9 2 11 color rand grav 1
+hold 1
+cut
+run 12
+snap 1

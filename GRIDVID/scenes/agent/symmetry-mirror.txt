@@ -1,0 +1,18 @@
+name symmetry mirror
+# SYMMETRY / MIRRORING about a central vertical axis (azure stripe down column 10).
+# Every object on the left has a twin at the mirror-image column on the right, and the
+# twins move as mirror images: the lower pair moves OUTWARD (left-twin left, right-twin
+# right); the upper pair moves INWARD toward the axis. The picture stays bilaterally
+# symmetric in every frame — left half = right half flipped.
+grid 21 14
+walls box
+# central axis of symmetry: a thin azure line down column 10
+spawn line 14 v at 0 10 color 8
+# lower pair: squares equidistant from the axis, mirrored OUTWARD motion
+spawn square 2 at 6 6 color 2 vel 0 -1
+spawn square 2 at 6 13 color 2 vel 0 1
+# upper pair: diamonds equidistant from the axis, mirrored INWARD motion
+spawn diamond 1 at 1 3 color 3 vel 0 1
+spawn diamond 1 at 1 15 color 3 vel 0 -1
+run 3
+hold 6

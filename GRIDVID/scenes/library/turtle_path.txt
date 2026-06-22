@@ -1,0 +1,12 @@
+# TASK: execute the program — the turtle reads the code strip and draws its path.
+rule execute the turtle program drawn at the bottom and draw the path it traces
+concept program turtle execution path
+vary color zoom
+grid 12 12
+bg 0
+seed 1
+turtle at 8 4 dir up program rand 4 color 7   # the program (random per example) is drawn as a strip
+hold 1                                          # IN: start marker + program strip
+cut
+drive                                           # OUT: the traced path
+snap 1

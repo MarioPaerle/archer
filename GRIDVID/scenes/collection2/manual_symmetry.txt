@@ -1,0 +1,40 @@
+# MANUAL mode: each example is authored by hand with a DIFFERENT shape & grid — genuine diversity.
+=== example ===
+rule complete the left-right symmetry
+concept symmetry reflection
+difficulty 0.55
+vary flip color
+grid 8 10
+bg 0
+spawn Lshape 3 at 2 1 color 3 id h
+hold 1
+cut
+mirror h axis v gap 0
+snap 1
+=== example ===
+rule complete the left-right symmetry
+grid 10 12
+bg 0
+spawn Tshape 4 at 1 2 color 6 id h
+hold 1
+cut
+mirror h axis v gap 1
+snap 1
+=== example ===
+rule complete the left-right symmetry
+grid 7 9
+bg 0
+spawn triangle 4 at 1 1 color 8 id h
+hold 1
+cut
+mirror h axis v gap 0
+snap 1
+=== test ===
+rule complete the left-right symmetry
+grid 9 11
+bg 0
+spawn plus 5 at 2 1 color 2 id h
+hold 1
+cut
+mirror h axis v gap 0
+snap 1

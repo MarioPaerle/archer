@@ -1,0 +1,11 @@
+name analogy occlusion shape pair
+grid 36 20
+walls none
+spawn square 2 at 4 0 color 3 vel 0 1 ghost 1 layer 0
+spawn rect 6 8 at 2 13 color 5 layer 1
+run 36
+hold 4
+spawn Lshape 3 at 13 0 color 3 vel 0 1 ghost 1 layer 0
+spawn rect 6 8 at 11 13 color 5 layer 1
+run 36
+hold 8

@@ -1,0 +1,5 @@
+name maze
+grid 21 21
+seed 5
+maze wall 5 solve 3
+run 80

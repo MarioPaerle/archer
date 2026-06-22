@@ -1,0 +1,12 @@
+# TASK: copy the object to the right and paint the copy blue.
+rule copy the object eight cells to the right and paint the copy blue
+concept copy translation color
+vary flip rot zoom
+grid 18 8
+bg 0
+seed 1
+spawn Lshape 3 random 1 1 4 6 color rand id o
+hold 1                 # IN: a single green object
+cut
+copy o by 0 8 tint 1   # OUT: a blue copy appears to the right
+snap 1

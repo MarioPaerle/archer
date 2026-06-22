@@ -1,0 +1,12 @@
+name collider lesson hit stop color transfer
+grid 34 20
+walls box
+spawn line 34 at 9 0 color 5
+spawn rect 4 2 at 2 20 color 5
+spawn square 3 at 3 2 color 2 vel 0 1 bounce 0
+run 24
+hold 5
+spawn rect 4 2 at 13 20 color 5
+spawn square 3 at 14 2 color 4 vel 0 1 bounce 0
+run 24
+hold 8

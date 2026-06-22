@@ -1,0 +1,12 @@
+# whole-grid: mirror the entire grid horizontally — like real ARC ed36ccf7 family.
+rule flip the whole grid left-to-right
+concept grid reflection whole-grid
+difficulty 0.5
+vary color
+grid 9 11
+bg 0
+seed 1
+noise uniform colors 0 0 1 9
+hold 1
+cut
+grid_flip h

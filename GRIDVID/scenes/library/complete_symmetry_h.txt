@@ -1,0 +1,13 @@
+# RULE (matrix/symmetry completion, Raven-style): the IN shows only the LEFT side of a left-right
+# symmetric pattern; complete it by mirroring across the vertical axis. Shapes/colours vary per example.
+rule complete the left-right mirror symmetry (fill the empty side)
+concept symmetry completion matrix-completion reflection raven whole-grid
+difficulty 0.65
+grid rand 14 16 8 10
+seed 1
+spawn Lshape 3 color rand 2 8 random 1 1 4 4
+spawn square rand 2 3 color rand 2 8 random 5 1 7 4
+hold 1
+cut
+grid_complete h
+vary rot zoom

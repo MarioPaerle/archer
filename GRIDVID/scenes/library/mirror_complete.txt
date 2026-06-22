@@ -1,0 +1,12 @@
+# TASK: complete the figure by mirroring it across the vertical axis.
+rule mirror the shape across the vertical line to complete the symmetric figure
+concept symmetry reflection reconstruction
+vary flip rot zoom color
+grid rand 14 18 9 12
+bg 0
+seed 1
+spawn Lshape 4 random 1 1 4 5 color rand id h
+hold 1                  # IN: only the left half is present
+cut
+mirror h axis v gap 0   # OUT: the reflected half completes the symmetry
+snap 1

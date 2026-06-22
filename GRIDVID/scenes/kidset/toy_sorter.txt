@@ -1,0 +1,13 @@
+name kidset toy sorter
+grid 24 22
+seed 7
+sort on
+board 8 24 at 0 0 color 5
+hole square 3 at 2 2 id square_home color 0
+hole triangle 4 at 1 10 id tri_home color 0
+hole plus 5 at 1 17 id plus_home color 0
+spawn square 3 random 13 0 21 23 color 2 target square_home
+spawn triangle 4 random 13 0 21 23 color 3 target tri_home
+spawn plus 5 random 13 0 21 23 color 4 target plus_home
+run 48
+hold 5

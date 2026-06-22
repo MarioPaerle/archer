@@ -1,0 +1,17 @@
+name noisy scattered sorter c
+grid 30 26
+seed 45
+noise uniform colors 0 5 probs 0.84 0.16
+sort on
+hole square 4 at 3 4 id big_sq color 5
+hole line 6 at 5 20 id hline color 5
+hole line 6 v at 14 3 id vline color 5
+hole disc 2 at 16 18 id disc_home color 5
+hole plus 3 at 10 12 id small_plus color 5
+spawn square 4 at 7 0 color 1 target big_sq
+spawn line 6 at 8 16 color 2 target hline
+spawn line 6 v at 18 7 color 3 target vline
+spawn disc 2 at 13 15 color 6 target disc_home
+spawn plus 3 at 7 9 color 4 target small_plus
+run 5
+hold 8

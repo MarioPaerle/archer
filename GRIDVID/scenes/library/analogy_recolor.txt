@@ -1,0 +1,16 @@
+# RULE (analogy A:B::C:?): the top pair shows a recolour (A -> B). Apply the SAME change to C.
+# bind_transform captures the A->B delta; apply re-applies it to C. Colours vary per example.
+rule the top shows how one shape changes colour; apply the same change to the bottom shape
+concept analogy bind apply transform recolor
+difficulty 0.7
+grid 12 10
+seed 1
+spawn square 2 at 1 1 color rand 2 5 id A
+spawn square 2 at 1 7 color rand 6 9 id B
+spawn square 2 at 6 1 color rand 2 5 id C
+hold 1
+cut
+bind_transform T from A to B
+apply T to C
+snap 1
+vary flip

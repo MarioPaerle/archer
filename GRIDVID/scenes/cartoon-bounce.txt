@@ -1,0 +1,6 @@
+name cartoon-bounce
+# old-TV bouncing logo: a shape ricochets around the screen (kid-cartoon feel)
+grid 22 14
+walls box
+spawn square 3 at 4 5 color 6 vel 1 1 bounce 1
+run 44

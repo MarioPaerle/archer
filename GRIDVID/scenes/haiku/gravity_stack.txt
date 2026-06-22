@@ -1,0 +1,15 @@
+rule let objects fall under gravity and stack at the bottom
+concept physics gravity stacking
+vary flip zoom color
+grid 10 12
+bg 0
+seed 1
+walls floor
+gravity down 1
+spawn square 2 at 1 2 color 2 grav 1
+spawn square 2 at 1 5 color 3 grav 1
+spawn square 2 at 1 8 color 6 grav 1
+hold 1
+cut
+run 8
+snap 1

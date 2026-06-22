@@ -1,0 +1,16 @@
+# odd-one-out: keep the shape that differs from the rest.
+rule keep only the object whose shape is different from the others
+concept odd-one-out selection shape
+difficulty 0.45
+vary flip rot color
+grid rand 12 16 10 14
+bg 0
+seed 1
+spawn square 2 random 1 1 10 10 color rand 3 9
+spawn square 2 random 1 1 10 10 color rand 3 9
+spawn square 2 random 1 1 10 10 color rand 3 9
+spawn triangle 3 random 1 1 10 10 color rand 3 9 id odd
+hold 1
+cut
+extract shape triangle
+snap 1

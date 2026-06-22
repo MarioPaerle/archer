@@ -1,0 +1,18 @@
+name similar colors group
+# SIMILAR COLORS ENCODE SIMILAR INFO: color = group identity, and group identity
+# = shared behaviour. The two GREEN squares behave alike (both fall together), the two
+# YELLOW squares behave alike (both drift right together), and the lone RED one is its
+# own group (stays put / falls alone). Same color -> same motion; different color -> different motion.
+grid 18 22
+gravity down 1
+walls box
+# GREEN group: both fall straight down (gravity on)
+spawn square 2 at 1 2 color 3 grav 1
+spawn square 2 at 1 14 color 3 grav 1
+# YELLOW group: both translate rightward at the same constant velocity (no gravity)
+spawn square 2 at 6 1 color 4 vel 0 1
+spawn square 2 at 9 1 color 4 vel 0 1
+# RED singleton: different color -> different (its own) behaviour: rises (vel up)
+spawn square 2 at 18 8 color 2 vel -1 0
+run 14
+hold 5

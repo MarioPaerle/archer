@@ -1,0 +1,9 @@
+# SPILL — the new simple fluid: a laminar pour that fills a cup and overflows the rim.
+grid 13 14
+bg 0
+walls floor
+spawn line 5 v at 5 4 color 5      # left wall of the cup
+spawn line 5 v at 5 8 color 5      # right wall
+spawn line 5 at 9 4 color 5        # bottom
+spill at 0 6 color 8 rate 1        # continuous pour from above
+run 30

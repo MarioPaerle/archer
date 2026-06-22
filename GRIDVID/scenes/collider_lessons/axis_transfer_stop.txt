@@ -1,0 +1,12 @@
+name collider lesson axis transfer stop
+grid 28 24
+walls box
+spawn line 28 at 11 0 color 5
+spawn rect 4 2 at 3 18 color 5
+spawn square 3 at 4 2 color 2 vel 0 1 bounce 0
+run 22
+hold 5
+spawn rect 2 10 at 20 9 color 5
+spawn square 3 at 13 12 color 4 vel 1 0 bounce 0
+run 22
+hold 8

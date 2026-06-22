@@ -1,0 +1,14 @@
+rule the object explodes, fragments fly, then the whole scene is mirrored
+concept explosion symmetry physics
+difficulty 0.68
+vary rot color
+grid rand 12 16 11 15
+bg 0
+walls box
+spawn rect rand 3 5 rand 4 7 random 4 6 4 8 color rand 1 8 id a
+run 1
+hold 1
+explode a
+run 5
+cut
+grid_flip h

@@ -1,0 +1,8 @@
+name magnets
+# magnetism: opposite charges snap together, like charges flee (magnet K, ± like charges)
+grid 24 10
+walls box
+spawn square 2 at 4 2 color 2 magnet 1
+spawn square 2 at 4 20 color 3 magnet -1
+spawn disc 1 at 7 11 color 6 magnet 1
+run 24

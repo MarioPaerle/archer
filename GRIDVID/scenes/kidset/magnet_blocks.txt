@@ -1,0 +1,12 @@
+name kidset magnet blocks
+grid 24 18
+seed 5
+walls box
+spawn square 2 at 2 2 color 2 magnet 1
+spawn square 2 at 14 18 color 2 magnet 1
+spawn rect 2 3 at 3 18 color 4 magnet 2
+spawn rect 2 3 at 13 3 color 4 magnet 2
+spawn dot at 8 10 color 7
+spawn dot at 8 13 color 7
+run 42
+hold 5

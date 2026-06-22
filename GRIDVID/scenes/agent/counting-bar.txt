@@ -1,0 +1,14 @@
+name counting bar
+# COUNTING / cardinality: five separate blue dots fall down one column and stack
+# into a bar of height 5. Quantity becomes a visible height — count items = count bar.
+grid 12 16
+gravity down 1
+walls floor
+# five dots, same column, staggered start heights so they fall and pile up
+spawn dot at 0 8 color 1 grav 1
+spawn dot at 2 8 color 1 grav 1
+spawn dot at 4 8 color 1 grav 1
+spawn dot at 6 8 color 1 grav 1
+spawn dot at 8 8 color 1 grav 1
+run 16
+hold 6

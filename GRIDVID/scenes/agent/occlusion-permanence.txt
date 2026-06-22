@@ -1,0 +1,12 @@
+name occlusion permanence
+# OCCLUSION / object permanence: red dots travel rightward and pass BEHIND a tall grey
+# wall. The wall is on a higher layer so it is drawn ON TOP: a dot vanishes at the wall's
+# left edge and reappears at the right edge — it never stopped existing, only hidden.
+# (Bolts fly through anything; layers decide who draws on top.)
+grid 30 12
+walls none
+# the occluder: a solid grey wall (12 tall, 5 wide) on a HIGHER layer (drawn on top)
+spawn rect 12 5 at 0 13 color 5 layer 2
+# travelers: a dot enters from the left every 8 frames and glides right behind the wall
+shooter at 6 0 dir right every 8 beam bolt color 2 speed 1
+run 28
