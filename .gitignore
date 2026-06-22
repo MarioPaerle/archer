@@ -32,3 +32,4 @@ venv/
 
 # LLM template proposals — staging only; admit good ones into scenes/library/ by hand
 GRIDVID/scenes/proposals/
+GRIDVID/scenes/proposals_hard/
