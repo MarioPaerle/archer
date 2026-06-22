@@ -94,13 +94,15 @@ function genDataset(opts = {}) {
   const cap = opts.maxAttempts || n * 30;
   const files = fs.readdirSync(templatesDir).filter(x => x.endsWith(".txt"));
   if (!files.length) throw new Error("no .txt templates in " + templatesDir);
-  // probe each template once for its concept (= category, for balanced sampling) + whether it sets its own examples count.
-  const templates = files.map(file => {
+  // probe each template once for its concept (= category, for balanced sampling) + whether it sets its own examples count + static/dynamic.
+  let templates = files.map(file => {
     const text = fs.readFileSync(path.join(templatesDir, file), "utf8");
-    let concepts = [];
+    let concepts = [], dynamic = false;
     try { concepts = E.runScene(E.withSeedText(text, seedBase), { noSim: true }).meta.concepts || []; } catch (e) { }
-    return { file, stem: stem(file), text, concepts, category: concepts[0] || stem(file), declaresExamples: /^\s*examples\b/m.test(text) };
+    try { const p = E.buildTask(text, { examples: 1, seed0: seedBase }); dynamic = [p.in, p.out, ...p.examples.flatMap(e => [e.in, e.out])].some(v => v.length > 1); } catch (e) { }
+    return { file, stem: stem(file), text, concepts, category: concepts[0] || stem(file), declaresExamples: /^\s*examples\b/m.test(text), dynamic };
   });
+  if (opts.static) templates = templates.filter(t => !t.dynamic);   // ARC-AGI-2-shape: clean grid→grid templates only
   const cats = {}; for (const t of templates) (cats[t.category] || (cats[t.category] = [])).push(t);
   const catKeys = Object.keys(cats);
   const rng = E.makeRng(seedBase * 2654435761 + 11);
@@ -120,6 +122,7 @@ function genDataset(opts = {}) {
     catch (e) { stats.errors++; bump(stats.byReason, "parse-error"); continue; }
     const te = task.meta.teaching;
     if (!te.ok || !te.coherent) { stats.rejected++; bump(stats.byReason, te.ok ? "incoherent" : "no-teaching"); continue; }
+    if (opts.static) staticizeTask(task);   // collapse to single-frame grids (ARC-AGI-2 shape)
     const hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
     if (seen.has(hash)) { stats.duplicates++; bump(stats.byReason, "duplicate"); continue; }   // content-hash dedup
     seen.add(hash);
@@ -570,7 +573,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       return;
     }
     let res;
-    try { res = genDataset({ templatesDir, n, seedBase, wildFrac: f.wildFrac, examples: f.examples, maxAttempts: f.maxAttempts }); }
+    try { res = genDataset({ templatesDir, n, seedBase, wildFrac: f.wildFrac, examples: f.examples, maxAttempts: f.maxAttempts, static: f.static }); }
     catch (e) { return console.error("generate-dataset: " + e.message); }
     writeDataset(dir, res.accepted, shards, numNodes > 1 ? `node-${nodeRank}-` : "");
     reportDataset(dir, res.stats, n, shards, 1);
