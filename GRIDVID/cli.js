@@ -333,6 +333,36 @@ function buildPrompt(registry, menu, opts = {}) {
   return out.join("\n");
 }
 
+// ---- template PROPOSER prompt: ask the model to INVENT one original clean single-rule STATIC template ----
+// (Not composition. Each proposal is ONE rule; the engine pre-filters; a human admits good ones to the library.)
+function buildTemplatePrompt(registry, rng, opts = {}) {
+  const templatesDir = opts.templatesDir || path.join(__dirname, "scenes", "library");
+  const statics = registry.filter(r => !r.dynamic);
+  // 3 diverse static exemplars (different categories) — show the FORM, not a thing to copy.
+  const byCat = {}; for (const r of statics) (byCat[r.category] || (byCat[r.category] = [])).push(r);
+  const cats = Object.keys(byCat); const picks = [];
+  for (let t = 0; t < 30 && picks.length < 3; t++) { const c = cats[rng.int(0, cats.length - 1)]; const r = byCat[c][rng.int(0, byCat[c].length - 1)]; if (!picks.find(p => p.name === r.name)) picks.push(r); }
+  const verbs = new Set(CORE_VERBS); for (const p of picks) for (const v of p.verbs) verbs.add(v);
+  verbs.add("where"); verbs.add("it"); verbs.add("odd"); verbs.add("dispatch"); verbs.add("classify"); verbs.add("combine"); verbs.add("grid_complete"); verbs.add("unfold"); verbs.add("bind_transform"); verbs.add("apply");
+  const exemplars = picks.map(p => { try { return "# (" + p.category + ")\n" + fs.readFileSync(path.join(templatesDir, p.file), "utf8").trim(); } catch (e) { return ""; } }).filter(Boolean);
+  return [
+    "You DESIGN one new ARC-AGI-2-style task TEMPLATE in GRIDVID scene-DSL. Output ONLY the scene text, no prose.",
+    "", "RULES:", ...GUARDRAILS,
+    "- This is a TEMPLATE: it must produce a DIFFERENT instance for each random seed. Use 'random', 'color rand', 'rand LO HI' so position/colour/size vary; the RULE stays fixed.",
+    "", "GRAMMAR (the parts you may use):", ...grammarSlice(verbs),
+    "", "PREDICATES (for dispatch/classify/where): " + Object.keys(E.PREDICATES).join(" · ") + ".",
+    "", "DESIGN GOAL:",
+    "Invent ONE original task with a SINGLE clean rule — the kind an ARC-AGI-2 solver could infer from 3–4 examples:",
+    "e.g. a context-sensitive recolour (dispatch by a predicate), a symmetry/figure completion, a boolean of two figures,",
+    "an analogy (A→B, apply to C), an odd-one-out, a counting/ordering rule, a palette/shape remap, an inside/outside fill.",
+    "HARD REQUIREMENTS: (1) exactly ONE rule; (2) the OUT must be EXACTLY that rule applied to the IN — nothing arbitrary;",
+    "(3) the rule must be VISIBLE from the examples alone; (4) STATIC (single-grid IN and OUT; no 'run'/physics);",
+    "(5) vary every non-rule feature across seeds. Do NOT chain unrelated operations — one coherent idea only.",
+    "", "REFERENCE TEMPLATES (study the FORM and the 'rule/concept/difficulty/vary' header; invent a DIFFERENT idea):",
+    ...exemplars.map((e, i) => "--- example " + (i + 1) + " ---\n" + e),
+  ].join("\n");
+}
+
 // ---- small-model generation harness (PAN-122 self-correcting loop + PAN-116 novelty) ----
 // The real CINECA loop: a served model (Qwen-30B-A3B via an OpenAI-compatible endpoint) WRITES scene-DSL from the
 // prompt-kit; the engine is the verifier; on reject we feed the reasons back and retry. Pluggable callModel → testable.
@@ -385,6 +415,23 @@ async function llmGenerateOne(prompt, callModel, opts = {}) {
     feedback = rejectReasons(task); trail.push(feedback.split(":")[0]);
   }
   return null;
+}
+
+// a candidate is a GOOD static template iff, reseeded across K seeds, it stays coherent + teaching + varied + single-grid.
+function verifyTemplate(scene, K = 4) {
+  let rule = null, name = "proposal";
+  for (let s = 1; s <= K; s++) {
+    let t; try { t = E.buildTask(scene, { examples: 3, exSeeds: [s, s + 1, s + 2], testSeed: s + 3 }); }
+    catch (e) { return { ok: false, reason: "parse error: " + String(e.message).split("\n")[0] }; }
+    const te = t.meta.teaching;
+    if (!te.ok) return { ok: false, reason: "no teaching — OUT must differ from IN for every example pair" };
+    if (!te.coherent) return { ok: false, reason: "incoherent: " + (te.incoherent || []).join("; ") };
+    if (te.examplesVary === false) return { ok: false, reason: "the examples are identical — vary position/colour/size across seeds with random/color rand/rand" };
+    if ([t.in, t.out, ...t.examples.flatMap(e => [e.in, e.out])].some(v => v.length > 1)) return { ok: false, reason: "the task is a VIDEO — make it STATIC: single-grid IN and OUT, no 'run'/physics; use hold/cut/snap" };
+    rule = t.meta.rule; name = ((t.meta.concepts || [])[0] || "proposal");
+  }
+  if (!rule) return { ok: false, reason: "missing a 'rule ...' line describing the single transformation" };
+  return { ok: true, rule, name: String(name).replace(/[^a-z0-9]+/gi, "_").slice(0, 20) || "proposal" };
 }
 
 const cmds = {
@@ -634,6 +681,56 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     console.log(`generate-llm → ${dir}`);
     console.log(`  accepted ${accepted.length}/${n}  attempts ${stats.attempts}  self-corrected ${stats.retried}  failed ${stats.failed}  dups ${stats.duplicates}`);
     if (f.stub) console.log("  (stub model — wire a real Qwen with --endpoint http://<vllm-host>:8000 --model <name>)");
+  },
+
+  // TEMPLATE PROPOSER: the model INVENTS new single-rule STATIC templates; the engine pre-filters across seeds;
+  // survivors are written to scenes/proposals/ (NOT the library) + a review gallery. A HUMAN admits the good ones.
+  //   propose-templates --n N (--endpoint URL [--model NAME] | --stub) [--retries R] [-o scenes/proposals]
+  async "propose-templates"(args) {
+    const f = flags(args);
+    const n = f.n || 10, outDir = f.out || path.join(__dirname, "scenes", "proposals"), retries = f.retries == null ? 2 : f.retries;
+    const templatesDir = f.templates || path.join(__dirname, "scenes", "library");
+    if (!f.stub && !f.endpoint) return console.error("propose-templates: need --endpoint URL or --stub");
+    let registry; try { registry = buildFunctionRegistry(templatesDir, 1); } catch (e) { return console.error("propose-templates: " + e.message); }
+    fs.mkdirSync(outDir, { recursive: true });
+    const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), accepted = [], seen = new Set();
+    const stats = { attempts: 0, saved: 0, retried: 0, failed: 0, dups: 0 }, cap = f.maxAttempts || n * 8;
+    const statics = registry.filter(r => !r.dynamic);
+    while (accepted.length < n && stats.attempts < cap) {
+      stats.attempts++;
+      const prompt = buildTemplatePrompt(registry, rng, { templatesDir });
+      let callModel;
+      if (f.stub) { const ex = statics[rng.int(0, statics.length - 1)]; const txt = fs.readFileSync(path.join(templatesDir, ex.file), "utf8"); callModel = async () => txt; }   // stub: echo a real static template (tests the pipeline)
+      else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model });
+      let good = null, scene = "", att = 0, feedback = "";
+      for (let a = 0; a <= retries; a++) {
+        att++;
+        let reply; try { reply = await callModel(feedback ? prompt + "\n\nYOUR PREVIOUS TEMPLATE WAS REJECTED — " + feedback + "\nFix exactly that; output the corrected scene only." : prompt); } catch (e) { feedback = "model error"; continue; }
+        scene = extractScene(reply); const v = verifyTemplate(scene);
+        if (v.ok) { good = v; break; } feedback = v.reason;
+      }
+      if (!good) { stats.failed++; continue; }
+      if (att > 1) stats.retried++;
+      const h = crypto.createHash("sha1").update(scene.replace(/\s+/g, " ").trim()).digest("hex");
+      if (seen.has(h)) { stats.dups++; continue; } seen.add(h);
+      const fname = "prop_" + String(accepted.length + 1).padStart(2, "0") + "_" + good.name + ".txt";
+      fs.writeFileSync(path.join(outDir, fname), "# PROPOSED by the model — REVIEW + eyeball before admitting to scenes/library/\n# rule: " + good.rule + "\n" + scene + "\n");
+      accepted.push({ scene, rule: good.rule, name: good.name, file: fname });
+      stats.saved++;
+    }
+    // review gallery
+    const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const cards = accepted.map(a => { let gif = "", meta = "";
+      try { const t = E.buildTask(a.scene, { examples: 3, seed0: 1 }); const m = E.taskToMontage(t, { fps: 2 }); gif = "data:image/gif;base64," + Buffer.from(GIF.encodeGif({ frames: m.frames, palette: E.ARC_PALETTE, cell: 10, delayMs: 500 })).toString("base64"); meta = `d${t.meta.difficulty != null ? t.meta.difficulty : "?"} · ${t.width}×${t.height}`; } catch (e) { }
+      return `<figure class=card>${gif ? `<img src="${gif}">` : "<div class=noimg>render failed</div>"}<figcaption><div class=rl>${esc(a.rule)}</div><div class=meta>${esc(a.file)} · ${meta}</div><details><summary>DSL</summary><pre>${esc(a.scene)}</pre></details></figcaption></figure>`;
+    }).join("\n");
+    const html = `<!doctype html><meta charset=utf-8><title>proposed templates — REVIEW</title><style>body{margin:0;background:#0b0b0d;color:#ededed;font:13px ui-monospace,Menlo,monospace;padding:24px}h1{color:#ff5fae;font-size:19px}.lead{color:#8a8a93;max-width:900px;line-height:1.6}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px}.card{background:#15151a;border:1px solid #2a2a31;border-radius:10px;padding:12px}img{image-rendering:pixelated;width:100%;border:1px solid #2a2a31;border-radius:6px;background:#000}.noimg{padding:40px;text-align:center;color:#ff5f5f}figcaption{display:flex;flex-direction:column;gap:6px;margin-top:8px}.rl{color:#e9e9ef}.meta{color:#8a8a93;font-size:10.5px}summary{color:#ffb14e;cursor:pointer}pre{white-space:pre-wrap;color:#cfcfd6;background:#0d0d11;border:1px solid #2a2a31;border-radius:6px;padding:8px;font-size:10.5px}</style>
+<h1>Proposed templates — REVIEW before admitting</h1><p class=lead>${accepted.length} candidate single-rule STATIC templates the model invented, each pre-filtered by the engine (coherent + teaching + varied across 4 seeds). <b>These are NOT in the library.</b> Eyeball each: if the OUT genuinely matches the rule and it's instructive, move <code>scenes/proposals/${"<file>"}.txt</code> into <code>scenes/library/</code>.</p><div class=grid>${cards}</div>`;
+    const gpath = path.join(path.dirname(outDir) === "." ? "out" : "out", "proposals_gallery.html");
+    fs.mkdirSync("out", { recursive: true }); fs.writeFileSync("out/proposals_gallery.html", html);
+    console.log(`propose-templates → ${outDir}  (review: out/proposals_gallery.html)`);
+    console.log(`  saved ${stats.saved} candidates  attempts ${stats.attempts}  self-corrected ${stats.retried}  failed ${stats.failed}  dups ${stats.dups}`);
+    if (f.stub) console.log("  (stub — echoes library templates to test the pipeline; wire Qwen with --endpoint)");
   },
 
   // hierarchical function-menu proposer (PAN-132 / G0): curate a small, coherent slice of the DSL per task so a
