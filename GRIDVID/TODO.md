@@ -30,6 +30,15 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [ ] More physics: pile-toppling/collapse, chain reactions, fluid + objects floating, magnets/charge fields.
 
 ## ✅ Done
+- [x] (2026-06-23) **Connecting + POINTING + SHADOW-CASTING + count_total fix (Mario).** gen_hard 23→28 families.
+      **Connecting (richer):** `connect_in_order` (dots connected into one path in COLOUR order red→green→yellow→blue→cyan; crossings are
+      grey-on-grey so the order stays unambiguous) · `connect_shape_pairs` (link the two same-colour SHAPES with a line of that colour; pairs
+      may cross). **Pointing (new object class, arrows/triangles read as pointers):** `point_select` (recolour the shape the arrow points at —
+      selection by direction) · `count_arrows` (count the arrows pointing up → tally). Helpers `arrowCells(dir,n)`/`apexOf`/`DIRV`/`bres`.
+      **Shadow-casting:** `cast_shadow` — a point light on a border (yellow) + occluders → per-cell ray-cast hard shadows (grey) in the umbra
+      behind each object. **Fixed augmentation bug (0b145f15):** `count_total` used `mark:"match"` → the tally took an arbitrary input colour
+      that changed every example (unlearnable); now `mark:"fixed"` (grey, never a shape colour, constant across examples). Verified:
+      separable-object families 10632/10632 monochrome (boundaries still clear), self-test green, all 6 new/changed eyeballed.
 - [x] (2026-06-23) **Clear object boundaries — no two objects ever touch/merge (Mario).** `placeRoster` rewritten as gap-enforced
       placement (rejection vs a dilated occupancy grid → every object ≥1 empty cell from every other, Chebyshev; NEVER places touching —
       throws if it can't, gen loop drops the task). Canonical impl in `gen_count.js`, reused by `gen_hard.js` (single source). Fixed the

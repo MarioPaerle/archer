@@ -20,6 +20,16 @@ const SOLID = ["square", "disc", "plus", "Lshape", "triangle"], HOLED = ["frame"
 const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s]) : E.buildShape(kind, [s]);
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
 const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
+const flipVcells = cells => { const [h] = bbox(cells); return cells.map(([r, c]) => [h - 1 - r, c]); };
+const transposeCells = cells => cells.map(([r, c]) => [c, r]);
+// Bresenham line cells from (r0,c0) to (r1,c1) inclusive.
+const bres = (r0, c0, r1, c1) => { const o = [], dr = Math.abs(r1 - r0), dc = Math.abs(c1 - c0), sr = r0 < r1 ? 1 : -1, sc = c0 < c1 ? 1 : -1; let err = dr - dc, r = r0, c = c0;
+  while (true) { o.push([r, c]); if (r === r1 && c === c1) break; const e2 = 2 * err; if (e2 > -dc) { err -= dc; r += sr; } if (e2 < dr) { err += dr; c += sc; } } return o; };
+// arrow/pointer cells (a filled triangle whose apex points `dir`). Humans read it as pointing. DIRV = the ray direction.
+const DIRV = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+const triUp = n => { const o = []; for (let r = 0; r < n; r++) { const w = 2 * r + 1, s = (n - 1) - r; for (let k = 0; k < w; k++) o.push([r, s + k]); } return o; };
+const arrowCells = (dir, n) => { let c = triUp(n); if (dir === "down") c = flipVcells(c); else if (dir === "left") c = transposeCells(c); else if (dir === "right") c = flipHcells(transposeCells(c)); return c; };
+const apexOf = (dir, n) => dir === "up" ? [0, n - 1] : dir === "down" ? [n - 1, n - 1] : dir === "left" ? [n - 1, 0] : [n - 1, n - 1];   // apex cell (relative to arrow's top-left), used as the ray origin
 
 // gap-enforced placement (every object separated by >= 1 empty cell, so boundaries are always clear and
 // same-colour objects never merge). Canonical impl lives in gen_count.js; reused here to stay in sync.
@@ -55,8 +65,8 @@ const FAMILIES = {
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: maj }))) }; } },
 
   // HUMAN-SHAPED counting (PAN-158): vertical · spaced · centred · colour-matched · cropped to a small answer grid.
-  count_total: { prior: "number", steps: 2, rule: "count the shapes; show the total as a vertical, spaced, centred tally", concept: ["counting", "cardinality", "subitize"],
-    make: rng => C.makeInstance(rng, { count_what: "total", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
+  count_total: { prior: "number", steps: 2, rule: "count all the shapes; show the total as a vertical, spaced, centred tally in a fixed marker colour", concept: ["counting", "cardinality", "subitize"],
+    make: rng => C.makeInstance(rng, { count_what: "total", orient: "v", spacing: "spaced", place: "center", mark: "fixed" }) },   // FIXED marker (grey, never a shape colour) — a total is colour-independent; "match" picked an arbitrary input colour that changed every example (unlearnable)
   count_per_color: { prior: "number", steps: 2, rule: "count the shapes of each colour; show one vertical spaced tally per colour, colour-matched", concept: ["counting", "per-colour", "tally"],
     make: rng => C.makeInstance(rng, { count_what: "per_color", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
   count_per_kind: { prior: "number", steps: 2, rule: "count the shapes of each kind; show one vertical spaced tally per kind, colour-matched", concept: ["counting", "per-kind", "tally"],
@@ -212,6 +222,65 @@ const FAMILIES = {
       const P = placeRoster(rng, H, W, specs);
       const IN = render(H, W, P.map(o => ({ ...o, cells: shapeCells("square", o.small) })));
       return { in: IN, out: render(H, W, P) }; } },
+
+  // ---- 2026-06-23 (Mario): richer CONNECTING + POINTING (arrows) + SHADOW-CASTING ----
+  connect_in_order: { prior: "geometry", steps: 2, rule: "connect the dots into one path following colour order: red→green→yellow→blue→cyan", concept: ["ordering", "sequence", "path", "connect"],
+    make(rng) { const K = rng.int(3, 5), H = rng.int(14, 18), W = rng.int(14, 18);
+      const order = RANKPAL.slice(0, K), specs = order.map(col => ({ cells: [[0, 0]], color: col }));
+      const P = placeRoster(rng, H, W, specs, 2), byCol = {}; for (const o of P) byCol[o.color] = o;   // gap 2: dots well spread
+      const IN = render(H, W, P), out = IN.map(r => r.slice());
+      for (let i = 0; i < order.length - 1; i++) { const a = byCol[order[i]], b = byCol[order[i + 1]]; for (const [r, c] of bres(a.r, a.c, b.r, b.c)) if (!out[r][c]) out[r][c] = 5; }   // grey polyline; crossings are grey-on-grey (order is unambiguous from the colours)
+      for (const o of P) out[o.r][o.c] = o.color;   // dots stay on top
+      return { in: IN, out }; } },
+
+  connect_shape_pairs: { prior: "geometry", steps: 2, rule: "connect the two shapes of each colour with a straight line of that colour", concept: ["connect", "pairing", "line", "relational"],
+    make(rng) { const K = rng.int(2, 3), H = rng.int(15, 19), W = rng.int(15, 19), cols = pick(rng, K, [2, 3, 4, 6, 8]), specs = [];
+      for (const col of cols) for (let j = 0; j < 2; j++) specs.push({ cells: shapeCells(pick(rng, 1, ["square", "disc", "plus"])[0], 2), color: col, grp: col });
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P), out = IN.map(r => r.slice()), byCol = {};
+      for (const o of P) (byCol[o.grp] = byCol[o.grp] || []).push(o);
+      for (const col of cols) { const [a, b] = byCol[col]; for (const [r, c] of bres(a.r + 1, a.c + 1, b.r + 1, b.c + 1)) if (out[r][c] === 0) out[r][c] = col; }   // link the two same-colour shapes; only fill empty cells
+      return { in: IN, out }; } },
+
+  point_select: { prior: "object", steps: 2, rule: "recolour the shape the arrow points at; leave the others unchanged", concept: ["pointing", "selection", "direction", "arrow"],
+    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), gap = 1, dir = pick(rng, 1, ["up", "down", "left", "right"])[0], dv = DIRV[dir], n = rng.int(2, 3);
+      const aCells = arrowCells(dir, n), [ah, aw] = bbox(aCells), occ = blank(H, W);
+      const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
+      const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
+      let ar = 0, ac = 0;   // bias the arrow so there is room AHEAD of it
+      for (let t = 0; t < 300; t++) { ar = dir === "up" ? rng.int(Math.floor(H / 2), H - ah) : dir === "down" ? rng.int(0, Math.max(0, Math.floor(H / 2) - ah)) : rng.int(0, H - ah);
+        ac = dir === "left" ? rng.int(Math.floor(W / 2), W - aw) : dir === "right" ? rng.int(0, Math.max(0, Math.floor(W / 2) - aw)) : rng.int(0, W - aw); if (free(aCells, ar, ac)) break; }
+      mark(aCells, ar, ac); const apex = apexOf(dir, n), apR = ar + apex[0], apC = ac + apex[1];
+      const place = onray => { for (let t = 0; t < 300; t++) { const s = rng.int(2, 3), cells = shapeCells("square", s); let r, c, ok;
+        if (dv[0] !== 0) { c = onray ? Math.max(0, Math.min(W - s, apC - rng.int(0, s - 1))) : rng.int(0, W - s); r = dir === "up" ? rng.int(0, Math.max(0, apR - s - 1)) : (apR + 1) + rng.int(0, Math.max(0, H - s - apR - 1)); ok = (c <= apC && apC <= c + s - 1) === onray; }
+        else { r = onray ? Math.max(0, Math.min(H - s, apR - rng.int(0, s - 1))) : rng.int(0, H - s); c = dir === "left" ? rng.int(0, Math.max(0, apC - s - 1)) : (apC + 1) + rng.int(0, Math.max(0, W - s - apC - 1)); ok = (r <= apR && apR <= r + s - 1) === onray; }
+        if (ok && free(cells, r, c)) return { cells, r, c }; } return null; };
+      const tgt = place(true); if (!tgt) throw new Error("point_select: no on-ray target");
+      const objs = [{ cells: aCells, r: ar, c: ac, color: 5, arrow: true }, { cells: tgt.cells, r: tgt.r, c: tgt.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0], target: true }]; mark(tgt.cells, tgt.r, tgt.c);
+      const nD = rng.int(1, 3); for (let i = 0; i < nD; i++) { const d = place(false); if (d) { objs.push({ cells: d.cells, r: d.r, c: d.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }); mark(d.cells, d.r, d.c); } }
+      const IN = render(H, W, objs), out = objs.map(o => o.target ? { ...o, color: 7 } : o);
+      return { in: IN, out: render(H, W, out) }; } },
+
+  count_arrows: { prior: "number", steps: 2, rule: "count the arrows that point up; show the count as a vertical tally", concept: ["pointing", "counting", "direction", "arrow"],
+    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), K = rng.int(3, 6), nUp = rng.int(1, Math.min(4, K));
+      const dirs = []; for (let i = 0; i < nUp; i++) dirs.push("up"); for (let i = nUp; i < K; i++) dirs.push(pick(rng, 1, ["down", "left", "right"])[0]);
+      const specs = shuffle(rng, dirs).map(d => ({ cells: arrowCells(d, rng.int(2, 3)), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      const g = blank(H, W); for (let i = 0; i < nUp; i++) g[i * 2][0] = 5; return { in: IN, out: C.cropToContent(g) }; } },   // small human-shaped grey tally
+
+  cast_shadow: { prior: "geometry", steps: 2, rule: "the light casts a shadow behind every object (the cells the light cannot reach)", concept: ["light", "shadow", "occlusion", "optics"],
+    make(rng) { const H = rng.int(14, 18), W = rng.int(14, 18), gap = 1, side = rng.int(0, 3);
+      const L = side === 0 ? [0, rng.int(0, W - 1)] : side === 1 ? [H - 1, rng.int(0, W - 1)] : side === 2 ? [rng.int(0, H - 1), 0] : [rng.int(0, H - 1), W - 1];
+      const occ = blank(H, W); occ[L[0]][L[1]] = 1;
+      const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
+      const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
+      const occluders = [], K = rng.int(1, 3);
+      for (let i = 0; i < K; i++) for (let t = 0; t < 200; t++) { const s = rng.int(2, 3), cells = shapeCells(pick(rng, 1, ["square", "disc"])[0], s), [bh, bw] = bbox(cells), r = rng.int(1, Math.max(1, H - bh - 1)), c = rng.int(1, Math.max(1, W - bw - 1)); if (free(cells, r, c)) { mark(cells, r, c); occluders.push({ cells, r, c, color: pick(rng, 1, [2, 3, 6, 8])[0] }); break; } }
+      const blocked = blank(H, W); for (const o of occluders) for (const [dr, dc] of o.cells) blocked[o.r + dr][o.c + dc] = 1;
+      const IN = blank(H, W); IN[L[0]][L[1]] = 4; for (const o of occluders) stamp(IN, o.cells, o.r, o.c, o.color);   // light = yellow(4)
+      const out = IN.map(r => r.slice());
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { if (IN[r][c]) continue; const line = bres(r, c, L[0], L[1]); let sh = false;
+        for (let k = 1; k < line.length - 1; k++) { if (blocked[line[k][0]][line[k][1]]) { sh = true; break; } } if (sh) out[r][c] = 5; }   // shadow = grey(5)
+      return { in: IN, out }; } },
 };
 
 function buildFamilyTask(famKey, rng, nEx) {
