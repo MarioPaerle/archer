@@ -407,10 +407,10 @@ function rejectReasons(task) {   // why validateTask said no → a short feedbac
   if (te.examplesVary === false) return "the examples are identical — vary the non-rule features (position/colour/size) across examples";
   return "unknown";
 }
-async function callModelHTTP(prompt, { endpoint, model, temperature = 0.9 }) {
+async function callModelHTTP(prompt, { endpoint, model, temperature = 0.6, top_p = 0.9, max_tokens = 1100 }) {   // 0.6 (was 0.9): lower temp → more reliable structured DSL + coherence
   const url = endpoint.replace(/\/$/, "") + (endpoint.includes("/chat/completions") ? "" : "/v1/chat/completions");
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(process.env.OPENAI_API_KEY ? { Authorization: "Bearer " + process.env.OPENAI_API_KEY } : {}) },
-    body: JSON.stringify({ model: model || "qwen", temperature, max_tokens: 900, messages: [{ role: "user", content: prompt }] }) });
+    body: JSON.stringify({ model: model || "qwen", temperature, top_p, max_tokens, messages: [{ role: "user", content: prompt }] }) });
   if (!res.ok) throw new Error("model HTTP " + res.status + ": " + (await res.text()).slice(0, 200));
   const j = await res.json();
   return (j.choices && j.choices[0] && (j.choices[0].message ? j.choices[0].message.content : j.choices[0].text)) || "";

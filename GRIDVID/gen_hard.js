@@ -22,8 +22,8 @@ const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c
 const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
 
 // ---- SHAPE vocab + SKINS (Mario: more than square/circle; objects not all plain; sub-object presence). ----
-const SHAPES_ALL = ["square", "disc", "plus", "Lshape", "triangle", "diamond", "Tshape"];   // broad shape vocab
-const SKINS = ["plain", "plain", "plain", "core", "border", "cross"];                        // plain weighted (MUST stay; easiest, teaches a lot)
+const SHAPES_ALL = ["square", "disc", "plus", "Lshape", "triangle", "diamond", "Tshape", "rect", "notch", "bump"];   // broad shape vocab
+const SKINS = ["plain", "plain", "plain", "core", "border", "cross", "stripe"];              // plain weighted (MUST stay; easiest, teaches a lot)
 // paint baseCells with internal structure → [[dr,dc,col],...]. accent = the sub-object colour; col 0 = a hole (left bg).
 function skinnedCells(baseCells, skin, color, accent) {
   const [h, w] = bbox(baseCells), set = new Set(baseCells.map(([r, c]) => r + "," + c));
@@ -34,6 +34,7 @@ function skinnedCells(baseCells, skin, color, accent) {
     if (skin === "core") { if (r === cr && c === cc) col = accent; }                 // central sub-object cell
     else if (skin === "border") { if (interior(r, c)) col = accent; }               // outline = colour, inside = accent
     else if (skin === "cross") { if (r === cr || c === cc) col = accent; }          // a plus of accent through the centre
+    else if (skin === "stripe") { if (r % 2 === 0) col = accent; }                  // alternating rows = accent
     else if (skin === "hole") { if (r === cr && c === cc) col = 0; }                // a punched hole at the centre
     return [r, c, col];
   });
@@ -351,17 +352,20 @@ const FAMILIES = {
   extract_by_core: { prior: "object", steps: 2, rule: "keep only the object whose central core is red; remove the others", concept: ["subobject", "core", "selection", "relational"],
     make(rng) { const K = rng.int(3, 5), H = rng.int(16, 20), W = rng.int(16, 20), body = pick(rng, 1, [1, 5, 8])[0];
       const cores = pick(rng, K, [3, 4, 6, 7, 9].filter(c => c !== body)), specs = [];
-      for (let i = 0; i < K; i++) specs.push({ cells: shapeCells(pick(rng, 1, ["square", "diamond", "plus"])[0], rng.int(3, 4)), color: body, skin: "core", accent: cores[i] });
+      for (let i = 0; i < K; i++) specs.push({ cells: shapeCells(pick(rng, 1, ["square", "diamond", "plus"])[0], rng.int(4, 5)), color: body, skin: "core", accent: cores[i] });   // size>=4 so the core reads clearly
       specs[rng.int(0, K - 1)].accent = 2;   // exactly one red core = the target
       const reds = specs.filter(o => o.accent === 2); for (let i = 1; i < reds.length; i++) reds[i].accent = pick(rng, 1, [3, 4, 6, 7])[0];
       const P = placeRoster(rng, H, W, specs);
       return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.filter(o => o.accent === 2)) }; } },
 
   odd_skin_out: { prior: "object", steps: 2, rule: "all objects share the same internal pattern except one; recolour the odd one yellow", concept: ["subobject", "odd-one-out", "pattern"],
-    make(rng) { const K = rng.int(3, 4), H = rng.int(16, 20), W = rng.int(16, 20), body = pick(rng, 1, [1, 5, 8])[0], accent = pick(rng, 1, [3, 6, 7].filter(c => c !== body))[0];
-      const major = pick(rng, 1, ["core", "border", "cross"])[0]; let odd = pick(rng, 1, ["plain", "core", "border", "cross"])[0]; while (odd === major) odd = pick(rng, 1, ["plain", "core", "border", "cross"])[0];
-      const specs = []; for (let i = 0; i < K; i++) specs.push({ cells: shapeCells("square", rng.int(3, 4)), color: body, skin: major, accent, odd: false });
-      specs.push({ cells: shapeCells("square", rng.int(3, 4)), color: body, skin: odd, accent, odd: true });
+    make(rng) { const K = rng.int(3, 4), H = rng.int(16, 20), W = rng.int(16, 20), body = pick(rng, 1, [1, 5, 8])[0], accent = pick(rng, 1, [3, 6, 7].filter(c => c !== body))[0], s = rng.int(4, 5);
+      const styles = ["plain", "core", "border", "cross", "stripe"], sq = shapeCells("square", s), pat = sk => JSON.stringify(skinnedCells(sq, sk, body, accent));
+      let major = pick(rng, 1, styles)[0], odd = pick(rng, 1, styles)[0], tries = 0;
+      while (pat(odd) === pat(major) && tries++ < 30) odd = pick(rng, 1, styles)[0];   // GUARD: the odd skin must RENDER differently from the major (core==border on a 3x3 was the bug; size>=4 + this guard fixes it)
+      if (pat(odd) === pat(major)) throw new Error("odd_skin_out: no distinct odd skin");
+      const specs = []; for (let i = 0; i < K; i++) specs.push({ cells: shapeCells("square", s), color: body, skin: major, accent, odd: false });
+      specs.push({ cells: shapeCells("square", s), color: body, skin: odd, accent, odd: true });
       const P = placeRoster(rng, H, W, specs);
       return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.map(o => o.odd ? { ...o, skin: null, color: 4 } : o)) }; } },
 };
