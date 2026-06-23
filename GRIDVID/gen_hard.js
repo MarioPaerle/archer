@@ -5,7 +5,7 @@
  * baseline-hard (a dumb 1-step solver fails). Emits prodigy-task JSON, each with a stable ID + difficulty.
  *   node gen_hard.js --n 40 -o out/hard.jsonl                                                              */
 const crypto = require("crypto");
-const E = require("./engine.js"), B = require("./baseline.js"), C = require("./gen_count.js");
+const E = require("./engine.js"), B = require("./baseline.js"), C = require("./gen_count.js"), M = require("./maze.js");
 
 const bbox = cells => { let h = 0, w = 0; for (const [r, c] of cells) { if (r + 1 > h) h = r + 1; if (c + 1 > w) w = c + 1; } return [h, w]; };
 const blank = (H, W) => Array.from({ length: H }, () => new Array(W).fill(0));
@@ -28,16 +28,20 @@ const bres = (r0, c0, r1, c1) => { const o = [], dr = Math.abs(r1 - r0), dc = Ma
 // arrow/pointer cells. Humans read a triangle/arrowhead as POINTING. DIRV = the ray direction. 8-way: 4 axis + 4 diagonal.
 const DIRV = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1], ne: [-1, 1], nw: [-1, -1], se: [1, 1], sw: [1, -1] };
 const AXIS = ["up", "down", "left", "right"], DIAG = ["ne", "nw", "se", "sw"];
-const triUp = n => { const o = []; for (let r = 0; r < n; r++) { const w = 2 * r + 1, s = (n - 1) - r; for (let k = 0; k < w; k++) o.push([r, s + k]); } return o; };
-const arrowCells = (dir, n) => { let c = triUp(n); if (dir === "down") c = flipVcells(c); else if (dir === "left") c = transposeCells(c); else if (dir === "right") c = flipHcells(transposeCells(c)); return c; };
 const hollowOutline = cells => { const set = new Set(cells.map(([r, c]) => r + "," + c)); return cells.filter(([r, c]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dr, dc]) => !set.has((r + dr) + "," + (c + dc)))); };
-// diagonal pointer = a chevron: two arms of length n meeting at the tip corner (reads as pointing to that corner).
+const orient = (cells, dir) => dir === "up" ? cells : dir === "down" ? flipVcells(cells) : dir === "left" ? transposeCells(cells) : flipHcells(transposeCells(cells));   // canonical-up glyph → any axis dir
+// ABSTRACT pointer glyphs (all "point up" canonically; a model must learn POINTING, not one triangle). tip = topmost-centre.
+const triUp = n => { const o = []; for (let r = 0; r < n; r++) { const w = 2 * r + 1, s = (n - 1) - r; for (let k = 0; k < w; k++) o.push([r, s + k]); } return o; };          // ▲ filled
+const arrowUp = n => { const o = triUp(2); for (let r = 2; r < n + 1; r++) o.push([r, 1]); return o; };                                                                            // ↑ head + shaft
+const veeUp = n => { const o = []; for (let i = 0; i < n; i++) { o.push([i, (n - 1) - i]); o.push([i, (n - 1) + i]); } return o; };                                                  // ^ caret (two strokes)
+const AXIS_STYLES = { filled: triUp, hollow: n => hollowOutline(triUp(n)), arrow: arrowUp, vee: veeUp };
+const AXIS_STYLE_KEYS = Object.keys(AXIS_STYLES);
+// diagonal pointer = a chevron: two arms meeting at the tip corner (reads as pointing to that corner).
 const chevron = (dir, n) => { const o = new Set(), add = (r, c) => o.add(r + "," + c);
   for (let i = 0; i < n; i++) { if (dir === "ne") { add(i, n - 1); add(0, i); } else if (dir === "nw") { add(i, 0); add(0, i); } else if (dir === "se") { add(i, n - 1); add(n - 1, i); } else { add(i, 0); add(n - 1, i); } }
   return [...o].map(s => s.split(",").map(Number)); };
-const pointerCells = (dir, n, hollow) => DIAG.includes(dir) ? chevron(dir, n) : (hollow ? hollowOutline(arrowCells(dir, n)) : arrowCells(dir, n));
-const axisApex = (dir, n) => dir === "up" ? [0, n - 1] : dir === "down" ? [n - 1, n - 1] : dir === "left" ? [n - 1, 0] : [n - 1, n - 1];
-const pointerApex = (dir, n) => DIAG.includes(dir) ? (dir === "ne" ? [0, n - 1] : dir === "nw" ? [0, 0] : dir === "se" ? [n - 1, n - 1] : [n - 1, 0]) : axisApex(dir, n);
+const pointerCells = (dir, n, style) => DIAG.includes(dir) ? chevron(dir, n) : orient((AXIS_STYLES[style] || triUp)(n), dir);
+const pointerStyleFor = (rng, dir) => DIAG.includes(dir) ? "chevron" : pick(rng, 1, AXIS_STYLE_KEYS)[0];
 
 // gap-enforced placement (every object separated by >= 1 empty cell, so boundaries are always clear and
 // same-colour objects never merge). Canonical impl lives in gen_count.js; reused here to stay in sync.
@@ -47,13 +51,14 @@ const RANKPAL = [2, 3, 4, 1, 8, 6];   // colours by ascending rank
 // shared setup for pointer/ray families: place an arrow (8-way, filled/hollow/diagonal) with room ahead, expose its
 // ray cells and a gap-respecting placer for on-ray / off-ray shapes. Throws if the grid can't fit it (gen loop drops).
 function pointerScene(rng, H, W, gap = 1) {
-  const dir = pick(rng, 1, [...AXIS, ...DIAG])[0], dv = DIRV[dir], n = rng.int(2, 4), hollow = !DIAG.includes(dir) && rng.int(0, 1) === 1;
-  const aCells = pointerCells(dir, n, hollow), [ah, aw] = bbox(aCells), occ = blank(H, W);
+  const dir = pick(rng, 1, [...AXIS, ...DIAG])[0], dv = DIRV[dir], n = rng.int(2, 4), style = pointerStyleFor(rng, dir);
+  const aCells = pointerCells(dir, n, style), [ah, aw] = bbox(aCells), occ = blank(H, W);
+  const tip = aCells.reduce((b, c) => (c[0] * dv[0] + c[1] * dv[1] > b[0] * dv[0] + b[1] * dv[1] ? c : b), aCells[0]);   // frontmost cell along the ray = the apex (works for any glyph)
   const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
   const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
   let ar, ac, apR, apC, rayCells = null;
   for (let t = 0; t < 500; t++) { ar = rng.int(0, H - ah); ac = rng.int(0, W - aw); if (!free(aCells, ar, ac)) continue;
-    const ap = pointerApex(dir, n); apR = ar + ap[0]; apC = ac + ap[1];
+    apR = ar + tip[0]; apC = ac + tip[1];
     const rc = []; let r = apR + dv[0], c = apC + dv[1]; while (r >= 0 && c >= 0 && r < H && c < W) { rc.push([r, c]); r += dv[0]; c += dv[1]; }
     if (rc.length >= 5) { rayCells = rc; break; } }
   if (!rayCells) throw new Error("pointerScene: no room ahead");
@@ -290,9 +295,13 @@ const FAMILIES = {
   count_arrows: { prior: "number", steps: 2, rule: "count the pointers that point up; show the count as a vertical tally", concept: ["pointing", "counting", "direction", "arrow"],
     make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20), K = rng.int(3, 6), nUp = rng.int(1, Math.min(4, K)), others = ["down", "left", "right", "ne", "nw", "se", "sw"];
       const dirs = []; for (let i = 0; i < nUp; i++) dirs.push("up"); for (let i = nUp; i < K; i++) dirs.push(pick(rng, 1, others)[0]);
-      const specs = shuffle(rng, dirs).map(d => ({ cells: pointerCells(d, rng.int(2, 3), !DIAG.includes(d) && rng.int(0, 1) === 1), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
+      const specs = shuffle(rng, dirs).map(d => ({ cells: pointerCells(d, rng.int(2, 3), pointerStyleFor(rng, d)), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
       const g = blank(H, W); for (let i = 0; i < nUp; i++) g[i * 2][0] = 5; return { in: IN, out: C.cropToContent(g) }; } },   // small human-shaped grey tally
+
+  maze_path: { prior: "geometry", steps: 2, rule: "trace the shortest path from the green start to the red goal through the maze", concept: ["maze", "pathfinding", "spatial", "path"],
+    make(rng) { const sz = 15, m = M.genMaze(rng, sz, sz, M.ALGOS[rng.int(0, M.ALGOS.length - 1)]);   // algorithm varies per example → learn pathfinding, not one maze texture
+      return { in: M.renderMaze(m, 0), out: M.renderMaze(m, Infinity) }; } },
 
   cast_shadow: { prior: "geometry", steps: 2, rule: "the light casts a shadow behind every object (the cells the light cannot reach)", concept: ["light", "shadow", "occlusion", "optics"],
     make(rng) { const H = rng.int(14, 18), W = rng.int(14, 18), gap = 1, side = rng.int(0, 3);
@@ -308,6 +317,22 @@ const FAMILIES = {
       for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { if (IN[r][c]) continue; const line = bres(r, c, L[0], L[1]); let sh = false;
         for (let k = 1; k < line.length - 1; k++) { if (blocked[line[k][0]][line[k][1]]) { sh = true; break; } } if (sh) out[r][c] = 5; }   // shadow = grey(5)
       return { in: IN, out }; } },
+
+  // ---- 2026-06-23 (Mario): morph (objects exchange shapes) + replicant (a per-object function, fixed by colour) ----
+  morph_swap: { prior: "object", steps: 2, rule: "the two objects exchange shapes; each keeps its own colour and position", concept: ["morph", "swap", "shape-exchange", "correspondence"],
+    make(rng) { const H = rng.int(13, 17), W = rng.int(13, 17), s = rng.int(3, 4), kinds = pick(rng, 2, ["square", "plus", "Lshape", "Tshape", "triangle"]), cols = pick(rng, 2, [2, 3, 4, 6, 8]);
+      const sh0 = shapeCells(kinds[0], s), sh1 = shapeCells(kinds[1], s);   // all these have an s×s bbox → reserving rectCells(s,s) keeps the gap after the swap
+      const specs = [{ cells: rectCells(s, s), shape: sh0, other: sh1, color: cols[0] }, { cells: rectCells(s, s), shape: sh1, other: sh0, color: cols[1] }];
+      const P = placeRoster(rng, H, W, specs);
+      return { in: render(H, W, P.map(o => ({ ...o, cells: o.shape }))), out: render(H, W, P.map(o => ({ ...o, cells: o.other }))) }; } },
+
+  replicant: { prior: "object", steps: 2, rule: "each object is transformed by a function fixed by its colour (one colour's shapes mirror left-right, another's flip top-bottom)", concept: ["replicant", "per-colour-function", "dispatch", "analogy"],
+    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), cols = pick(rng, 2, [2, 3, 4, 6, 8]), K = rng.int(3, 5), kinds = ["Lshape", "Tshape", "triangle", "notch"];
+      const tf = shuffle(rng, [c => flipHcells(c), c => flipVcells(c), c => flipHcells(flipVcells(c))]).slice(0, 2), fn = { [cols[0]]: tf[0], [cols[1]]: tf[1] };
+      const specs = []; for (let i = 0; i < K; i++) { const sh = shapeCells(kinds[rng.int(0, 3)], rng.int(3, 4)), [bh, bw] = bbox(sh); specs.push({ cells: rectCells(bh, bw), shape: sh, color: cols[rng.int(0, 1)] }); }
+      if (!specs.some(o => o.color === cols[0])) specs[0].color = cols[0]; if (!specs.some(o => o.color === cols[1])) specs[1].color = cols[1];
+      const P = placeRoster(rng, H, W, specs);   // reserve the full bbox → the per-colour flip keeps the gap
+      return { in: render(H, W, P.map(o => ({ ...o, cells: o.shape }))), out: render(H, W, P.map(o => ({ ...o, cells: fn[o.color](o.shape) }))) }; } },
 };
 
 function buildFamilyTask(famKey, rng, nEx) {
@@ -342,6 +367,19 @@ function buildBeamVideo(base, nEx) {
     meta: { id, rule: "the pointer launches a beam that extends in its direction until it hits a shape", concepts: ["pointing", "ray", "beam", "emission", "video"], prior: "geometry/physics", difficulty: 0.5, template: "phys:beam_video", source: "physics", dynamic: true, tier: "physics", n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } } };
 }
 
+// ACCELERATED maze-solving video: IN = unsolved maze (green start, red goal); OUT = the path drawn `stride` cells per
+// frame (stride 2/3/5 → short video, not 60 frames). Algorithm varies per example so the model abstracts pathfinding.
+function buildMazeVideo(base, nEx) {
+  const rng = E.makeRng(base * 2654435761 + 29), sz = [13, 15, 17][rng.int(0, 2)], stride = [2, 3, 5][rng.int(0, 2)];
+  const one = () => { const m = M.genMaze(rng, sz, sz, M.ALGOS[rng.int(0, M.ALGOS.length - 1)]);
+    const out = []; for (let k = stride; k < m.path.length; k += stride) out.push(M.renderMaze(m, k)); out.push(M.renderMaze(m, Infinity));
+    return { in: [M.renderMaze(m, 0)], out }; };
+  const examples = []; for (let i = 0; i < nEx; i++) examples.push(one()); const test = one();
+  const id = "MAZE-" + crypto.createHash("sha1").update(JSON.stringify([examples, test])).digest("hex").slice(0, 8);
+  return { format: "prodigy-task", version: 1, width: sz % 2 ? sz : sz - 1, height: sz % 2 ? sz : sz - 1, palette: "arc10", fps: 4, examples, in: test.in, out: test.out,
+    meta: { id, rule: "find the path from the green start to the red goal; the path is drawn step by step", concepts: ["maze", "pathfinding", "spatial", "video"], prior: "geometry/physics", difficulty: 0.6, template: "phys:maze_video", source: "physics", dynamic: true, tier: "physics", n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } } };
+}
+
 if (require.main === module) {
   const args = process.argv.slice(2), f = { n: 40, out: "out/hard.jsonl" };
   for (let i = 0; i < args.length; i++) { if (args[i] === "--n") f.n = +args[++i]; else if (args[i] === "-o") f.out = args[++i]; else if (args[i] === "--seed") f.seed = +args[++i]; }
@@ -362,4 +400,4 @@ if (require.main === module) {
   console.log("  families (" + keys.length + "): " + Object.entries(byFam).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ":" + v).join("  "));
   console.log("  PRIOR coverage: " + Object.entries(byPrior).map(([k, v]) => k + ":" + v).join("  "));
 }
-module.exports = { FAMILIES, buildFamilyTask, buildBeamVideo };
+module.exports = { FAMILIES, buildFamilyTask, buildBeamVideo, buildMazeVideo };

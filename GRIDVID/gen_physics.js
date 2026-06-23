@@ -20,14 +20,14 @@ const TEMPLATES = [
   { key: "spin_rotate", prior: "geometry/physics", concept: ["rotation", "spin", "transform"], diff: 0.5 },
   { key: "spill_pool", prior: "topology/physics", concept: ["fluid", "containment", "flow"], diff: 0.5 },
   { key: "explode_predict", prior: "object/physics", concept: ["explosion", "radial", "prediction"], diff: 0.65 },
-  { key: "beam_video", prior: "geometry/physics", concept: ["pointing", "ray", "beam", "emission"], diff: 0.5, build: true },   // program-first video (gen_hard.buildBeamVideo): a pointer launches a beam that extends frame by frame
-  { key: "maze_solve", prior: "geometry/physics", concept: ["maze", "pathfinding", "spatial"], diff: 0.6 },
-  { key: "magnet_dock", prior: "object/physics", concept: ["magnet", "grouping", "attraction"], diff: 0.55 },
+  { key: "beam_video", prior: "geometry/physics", concept: ["pointing", "ray", "beam", "emission"], diff: 0.5, build: GH.buildBeamVideo },   // program-first videos
+  { key: "maze_video", prior: "geometry/physics", concept: ["maze", "pathfinding", "spatial"], diff: 0.6, build: GH.buildMazeVideo },        // accelerated multi-algorithm maze solve
+  { key: "magnet_dock", prior: "object/physics", concept: ["magnet", "grouping", "colour-attraction"], diff: 0.55 },
 ];
 const TEXT = Object.fromEntries(TEMPLATES.filter(t => !t.build).map(t => [t.key, SCN(t.key)]));   // build-templates have no scene file
 
 function buildPhysicsTask(tmpl, base, nEx, augment) {
-  if (tmpl.build) return GH.buildBeamVideo(base, nEx);   // program-first video template
+  if (tmpl.build) return tmpl.build(base, nEx);   // program-first video template
   const t = E.buildTask(TEXT[tmpl.key], { examples: nEx, exSeeds: Array.from({ length: nEx }, (_, i) => base + 1 + i), testSeed: base + nEx + 1, augment });
   const id = "PHY-" + crypto.createHash("sha1").update(JSON.stringify([t.examples, t.in, t.out])).digest("hex").slice(0, 8);
   t.meta = Object.assign({}, t.meta, { id, prior: tmpl.prior, tier: "physics", dynamic: true, difficulty: tmpl.diff, template: "phys:" + tmpl.key, source: "physics", concepts: tmpl.concept });

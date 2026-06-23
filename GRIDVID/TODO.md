@@ -27,6 +27,14 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-23) **Mario round 3: abstract pointers · maze overhaul · morph/replicant · magnet fix.** gen_hard 29→**32 families**.
+      **Abstract pointer glyphs:** beyond the triangle — `arrow` (head+shaft ↑), `vee` (caret ^), `hollow` outline, + diagonal chevron;
+      ray emanates from each glyph's computed tip (frontmost cell). **Maze overhaul** (new `maze.js`, 3 algorithms: backtracker/Prim/binary-tree
+      → model abstracts pathfinding, not one texture): `maze_path` (STATIC unsolved→solved, **green start / red goal**, blue path) + `maze_video`
+      (ACCELERATED: path drawn `stride` 2/3/5 cells per frame → ~9 frames not 60). Replaces the slow engine `maze_solve` scene. **morph_swap**
+      (two objects exchange shapes, keep colour+position). **replicant** (each object transformed by a function fixed by its COLOUR — the
+      scalable "different function per colour"). **Fixed magnet_dock** (de200a9a — the magnet group was invisible; now same-COLOUR objects
+      attract = visible hint). All eyeballed; separable families 10936/10936 monochrome; self-test green (library 61→60).
 - [x] (2026-06-23) **Pointer enrichment + ray (static & video) + more physics (Mario).** gen_hard 28→**29 families**, gen_physics 9→**12**.
       **Pointers:** 8-way directions (4 axis + 4 **diagonal chevrons**), **hollow** triangles, via `pointerCells`/`pointerScene`. `point_select`
       now covers all 8 dirs + filled/hollow; `count_arrows` too. **Ray launched — STATIC:** `point_ray` (beam from the tip to the first shape

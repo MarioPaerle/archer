@@ -996,7 +996,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     checks.push(["generate-dataset dedups (unique ids) + spans templates", new Set(ds.accepted.map(a => a.id)).size === 12 && new Set(ds.accepted.map(a => a.template)).size >= 4]);
     // hierarchical function-menu proposer (PAN-132 / G0)
     const reg = buildFunctionRegistry(path.join(__dirname, "scenes", "library"), 1);
-    checks.push(["function registry covers the library with categories", reg.length === 61 && reg.every(r => r.category) && new Set(reg.map(r => r.category)).size >= 6]);
+    checks.push(["function registry covers the library with categories", reg.length === 60 && reg.every(r => r.category) && new Set(reg.map(r => r.category)).size >= 6]);
     const menu = proposeMenu(E.makeRng(123), reg, { k: 3 });
     const augOk = menu.augmentations.every(a => menu.functions.every(fn => reg.find(r => r.name === fn.name).safeAug.includes(a)));
     const wholeOk = menu.functions.filter(fn => fn.wholeGrid).length <= 1;
