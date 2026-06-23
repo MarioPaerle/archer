@@ -1086,7 +1086,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const mockModel = async () => { mockCalls++;
       return mockCalls === 1
         ? "grid 10 10\nseed 1\nspawn square 2 random 1 1 7 7 color 2\nhold 1\ncut\nsnap 1"                       // OUT==IN → no teaching
-        : "grid 10 10\nseed 1\nspawn square 2 random 1 1 7 7 color 2\nhold 1\ncut\nrecolor all tint 5\nsnap 1"; };  // teaches
+        : "grid 10 10\nseed 1\nspawn square 2 random 1 1 8 3 color 2\nspawn square 2 random 1 6 8 8 color 3\nhold 1\ncut\nrecolor color 2 tint 3\nsnap 1"; };  // teaches + colour-grounded (3 is in the input)
     const llmR = await llmGenerateOne("PROMPT", mockModel, { retries: 2 });
     checks.push(["self-correcting loop retries on reject then accepts the fixed scene", !!llmR && llmR.attempts === 2 && llmR.task.meta.teaching.ok && mockCalls === 2]);
     checks.push(["extractScene strips code fences + prose", extractScene("Here is my scene:\n```\ngrid 8 8\nspawn dot at 1 1\n```\nDone.").startsWith("grid 8 8") && !extractScene("```\ngrid 8 8\n```").includes("`")]);
