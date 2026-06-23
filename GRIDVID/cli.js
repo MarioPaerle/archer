@@ -25,6 +25,8 @@ const GIF = require("./gif.js");
 const Patch2D = require("./tokenizer/patch2d.js");
 const Shape2D = require("./tokenizer/shape2d.js");
 const Baseline = require("./baseline.js");   // dumb 1-step solver → "too simple" detector (--hard filter)
+const GenHard = require("./gen_hard.js");     // program-first families (correct-by-construction) — the quality engine
+const Reconcile = require("./reconcile.js");  // reconciliation layer: the LLM picks/ranks correct variants (mode-1)
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -716,6 +718,37 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     console.log(`generate-llm → ${dir}`);
     console.log(`  accepted ${accepted.length}/${n}  attempts ${stats.attempts}  self-corrected ${stats.retried}  failed ${stats.failed}  dups ${stats.duplicates}`);
     if (f.stub) console.log("  (stub model — wire a real Qwen with --endpoint http://<vllm-host>:8000 --model <name>)");
+  },
+
+  // RECONCILIATION mode-1 (RANK / taste): for each task, gen_hard makes K CORRECT variants of one family; the LLM picks
+  // the most human/legible one. The LLM never authors → output can't overlap / invent colours; it only expresses taste.
+  //   rank --n N (--endpoint URL [--model NAME] | --stub) [--k 4] [-o dir]
+  async rank(args) {
+    const f = flags(args);
+    const n = f.n || 20, K = f.k || 4, dir = f.out || "out/ranked", shards = Math.max(1, f.shards || 1);
+    if (!f.stub && !f.endpoint) return console.error("rank: need --endpoint URL (OpenAI-compatible) or --stub");
+    const fams = Object.keys(GenHard.FAMILIES), rng = E.makeRng((f.seedBase || 1) * 40503 + 7), accepted = [], seen = new Set();
+    const stats = { built: 0, ranked: 0, chosen: {} }; let attempts = 0;
+    while (accepted.length < n && attempts < n * 6) {
+      attempts++;
+      const fam = fams[rng.int(0, fams.length - 1)], variants = [];
+      for (let kk = 0; kk < K; kk++) { let t = null; for (let tr = 0; tr < 40 && !t; tr++) { try { t = GenHard.buildFamilyTask(fam, E.makeRng(rng.int(1, 1e9)), 3); } catch (e) { t = null; } } if (t && !Baseline.trivialSolve(t)) variants.push(t); }
+      if (variants.length < 2) continue;
+      stats.built++;
+      let choice = 0;
+      if (f.stub) choice = attempts % variants.length;   // stub: deterministic spread (tests the pipeline)
+      else { try { const reply = await callModelHTTP(Reconcile.buildRankPrompt(variants[0].meta.rule, variants), { endpoint: f.endpoint, model: f.model, temperature: 0.2 }); choice = Reconcile.parseChoice(reply, variants.length); stats.ranked++; } catch (e) { choice = 0; } }
+      const sel = variants[choice];
+      const hash = crypto.createHash("sha1").update(JSON.stringify([sel.examples, sel.in, sel.out])).digest("hex");
+      if (seen.has(hash)) continue; seen.add(hash);
+      sel.meta.id = hash.slice(0, 12); sel.meta.source = "reconcile-rank"; sel.meta.reconcile = { mode: "rank", k: variants.length, chosen: choice };
+      stats.chosen[choice] = (stats.chosen[choice] || 0) + 1;
+      accepted.push({ id: sel.meta.id, task: sel, template: "rank:" + fam, category: fam });
+    }
+    writeDataset(dir, accepted, shards);
+    console.log(`rank → ${dir}  (${accepted.length}/${n} tasks · K=${K} variants each · ${stats.ranked} LLM-ranked)`);
+    console.log("  chosen-index distribution (taste signal; not all index 0 = the model is really choosing):", JSON.stringify(stats.chosen));
+    if (f.stub) console.log("  (stub — wire Qwen with --endpoint http://<vllm-host>:8000 --model <name>)");
   },
 
   // TEMPLATE PROPOSER: the model INVENTS new single-rule STATIC templates; the engine pre-filters across seeds;
