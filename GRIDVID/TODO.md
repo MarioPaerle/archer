@@ -8,6 +8,12 @@ Running list. Newest priorities on top. Done items move to the bottom.
 > PAN-121/122 (prompt-kit + retry loop) · PAN-115/116 (IQ priors + Qwen novelty) · PAN-124 (semantic guard) · PAN-117 (objectives).
 
 ## 🔜 Open — larger tracked efforts (each is its own multi-session piece, NOT quick wins; on Linear)
+- [ ] **Engine `shape NAME pattern P|P|P` custom-object def** (`def A … / spawn A`, Mario) — define an arbitrary object/SKIN
+      with an internal colour pattern (multi-cell, multi-colour) and spawn it as one unit. Plus a **skin LIBRARY** (big template set)
+      and **model-drawn skins** (a new object variable per task instance). Lets Qwen invent objects → far more variety/humanity.
+- [ ] **mode-3 PROPOSE-combinations** — Qwen proposes prior-pairs; the generator builds them correct (needs auto-compose, PAN-120).
+- [ ] **Hyper-strong DSL suggestion** — keep enriching the free-author prompt (now visible via `meta.prompt` in galleries) so Qwen
+      can "generate with its own mind"; iterate using the shown suggestion to attribute failures to the model, not the prompt.
 - [ ] **Online IQ / matrix-reasoning tests → DSL** (PAN-115) — re-encode the ABSTRACT transformation types behind
       Raven's matrices / analogies / series as new templates (never copy copyrighted items). Pulls the corpus more
       in-distribution. (G4/G7 already cover analogy/series/matrix-completion in the engine; this is the curation pass.)
@@ -27,6 +33,11 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-23) **Skins/sub-objects + derivable-colour rule + show-the-prompt (Mario).** Removed `count_to_color` (count→arbitrary
+      colour) and `count_per_kind` (kind tally colour not derivable) — not ARC-style; new rule: no arbitrary colour encodings. Added
+      `paintSkin` (plain-weighted + core/border/cross) over a broad shape vocab (square/disc/plus/L/triangle/diamond/T) + families
+      `extract_by_core`, `odd_skin_out`; `remove_noise` skinned. Objects no longer all plain. `generate-llm` saves `meta.prompt`;
+      `build_exp_gallery` shows it (the DSL suggestion). gen_hard 32 families, self-test green.
 - [x] (2026-06-23) **Reconciliation mode-1 (RANK) — the pivot off free-authoring.** `reconcile.js` + `cli.js rank`: gen_hard makes
       K=4 correct-by-construction variants of one family; the LLM picks the most human/legible. Output can't be incoherent/overlapping/
       magic — every candidate is already correct; the LLM only adds taste. Validated on CINECA Qwen (N=24): all clean & coherent; Qwen
