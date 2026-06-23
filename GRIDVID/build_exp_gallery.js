@@ -16,7 +16,7 @@ function card(t) {
     <figcaption>
       <div class=id>${esc(id)}${tmpl ? ` · <span class=tpl>${esc(tmpl)}</span>` : ""}</div>
       <div class=rl>${esc(t.meta.rule)}</div>
-      <div class=meta>${verdict} · d${t.meta.difficulty != null ? t.meta.difficulty : "?"} · ${t.width}×${t.height} · ${t.examples.length}ex</div>
+      <div class=meta>${verdict} · d${t.meta.difficulty != null ? t.meta.difficulty : "?"}${t.meta.prior ? ` · <span class=prior>${esc(t.meta.prior)}</span>` : ""} · ${t.width}×${t.height} · ${t.examples.length}ex</div>
       ${t.meta.dsl ? `<details><summary>DSL</summary><pre>${esc(t.meta.dsl.trim())}</pre></details>` : ""}
     </figcaption></figure>`;
 }
@@ -29,7 +29,7 @@ img{image-rendering:pixelated;width:100%;border:1px solid #2a2a31;border-radius:
 figcaption{display:flex;flex-direction:column;gap:5px;margin-top:8px}
 .id{color:#7fd4ff;font-weight:700;font-size:11px}.tpl{color:#9fe89f;font-weight:400}
 .rl{color:#e9e9ef;font-size:12px;line-height:1.35}.meta{color:#8a8a93;font-size:10.5px}
-.triv{color:#ff8f5f}.hard{color:#9fe89f}
+.triv{color:#ff8f5f}.hard{color:#9fe89f}.prior{color:#c9a0ff}
 summary{color:#ffb14e;cursor:pointer;font-size:11px}pre{white-space:pre-wrap;color:#cfcfd6;background:#0d0d11;border:1px solid #2a2a31;border-radius:6px;padding:8px;font-size:10px}
 </style><h1>${esc(title)}</h1><p class=lead>${esc(subtitle)}</p><div class=grid>${tasks.map(card).join("\n")}</div>`;
 fs.writeFileSync(outFile, html);
