@@ -30,6 +30,14 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [ ] More physics: pile-toppling/collapse, chain reactions, fluid + objects floating, magnets/charge fields.
 
 ## ✅ Done
+- [x] (2026-06-23) **Clear object boundaries — no two objects ever touch/merge (Mario).** `placeRoster` rewritten as gap-enforced
+      placement (rejection vs a dilated occupancy grid → every object ≥1 empty cell from every other, Chebyshev; NEVER places touching —
+      throws if it can't, gen loop drops the task). Canonical impl in `gen_count.js`, reused by `gen_hard.js` (single source). Fixed the
+      transform-breaks-gap cases: `mirror_each` reserves the full bbox footprint (mirrored cells keep the gap); `gravity_drop` uses banded
+      columns + distinct colours (floor-rested objects never merge); `quadrant_recolor` insets from both midlines; `connect_pairs` rows ≥2
+      apart; `inside_outside` occupancy-based gap placement (inside objects no longer touch the frame); `remove_noise` 8-neighbour isolation.
+      Grids enlarged +3 to keep big-object variety with the gap (drop ~13%). Verified: same-colour merge 400/400 clean, scene boundary clarity
+      10760/10760 monochrome components, eyeballed. (`sort_row_by_size` OUT is a deliberate multi-colour legend row, exempt.)
 - [x] (2026-06-23) **PAN-158 — human-shaped task outputs.** Audited every gen_hard ANSWER-type family (the ones whose OUT is a small
       answer, not a transformed scene) and made them human-shaped via `gen_count.js` machinery (`makeInstance`/`layoutTallies`/`cropToContent`,
       now exported). Replaced non-human `count_to_bar` (horizontal bar in a big mostly-empty grid) with **`count_total` / `count_per_color` /

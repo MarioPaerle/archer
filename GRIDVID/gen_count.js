@@ -27,15 +27,26 @@ const SCHEMA = {
 function validAssignment(a) { if (!a || typeof a !== "object") return false; for (const k in SCHEMA) if (!SCHEMA[k].includes(a[k])) return false; return true; }
 const HUMAN = { count_what: "per_kind", orient: "v", spacing: "spaced", place: "center", mark: "match" };
 
-// place a roster of {cells,color} into disjoint grid cells (clean, non-overlapping). Returns placed + the input objs meta.
-function placeRoster(rng, H, W, specs) {
-  const k = specs.length, cols = Math.ceil(Math.sqrt(k)), rows = Math.ceil(k / cols);
-  const cellH = Math.floor(H / rows), cellW = Math.floor(W / cols), placed = []; let idx = 0;
-  const order = shuffle(rng, specs.map((_, i) => i));
-  for (let cr = 0; cr < rows && idx < k; cr++) for (let cc = 0; cc < cols && idx < k; cc++) {
-    const sp = specs[order[idx++]], [bh, bw] = bbox(sp.cells), r0 = cr * cellH, c0 = cc * cellW;
-    const r = r0 + (cellH > bh ? rng.int(0, Math.max(0, cellH - bh)) : 0), c = c0 + (cellW > bw ? rng.int(0, Math.max(0, cellW - bw)) : 0);
-    placed.push(Object.assign({}, sp, { r, c }));
+// Place a roster of {cells,...} so EVERY object is separated from every other by >= `gap` empty cells
+// (Chebyshev distance) — boundaries are always clear and two objects (especially same-colour) never touch/merge
+// into one blob. Rejection sampling against a dilated occupancy grid; deterministic scan + last-resort fallback
+// keep it total on crowded grids (rare). Returns placed specs (order shuffled; families key off props, not index).
+function placeRoster(rng, H, W, specs, gap = 1) {
+  const occ = blank(H, W), placed = [];
+  const free = (cells, r, c) => {
+    for (const [dr, dc] of cells) {
+      const rr = r + dr, cc = c + dc;
+      if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false;
+      for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; }
+    }
+    return true;
+  };
+  const put = (sp, r, c) => { for (const [dr, dc] of sp.cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } placed.push(Object.assign({}, sp, { r, c })); };
+  for (const sp of shuffle(rng, specs)) {
+    const [bh, bw] = bbox(sp.cells); let done = false;
+    for (let t = 0; t < 240 && !done; t++) { const r = rng.int(0, Math.max(0, H - bh)), c = rng.int(0, Math.max(0, W - bw)); if (free(sp.cells, r, c)) { put(sp, r, c); done = true; } }
+    if (!done) { for (let r = 0; r <= H - bh && !done; r++) for (let c = 0; c <= W - bw && !done; c++) if (free(sp.cells, r, c)) { put(sp, r, c); done = true; } }   // deterministic gap-respecting scan
+    if (!done) throw new Error("placeRoster: cannot place with gap (grid too crowded)");   // NEVER place touching — drop the task instead (gen loop catches)
   }
   return placed;
 }
@@ -73,7 +84,7 @@ function cropToContent(g, margin = 1) {
 }
 const KINDS = ["square", "disc", "plus", "Lshape", "triangle"];
 function makeInstance(rng, a) {
-  const H = rng.int(13, 18), W = rng.int(13, 18);
+  const H = rng.int(15, 20), W = rng.int(15, 20);
   // a roster with a few colours and kinds, counts kept in the subitizing range
   const palette = shuffle(rng, [2, 3, 4, 6, 8]).slice(0, rng.int(2, 3));
   const kinds = shuffle(rng, KINDS).slice(0, rng.int(2, 3));
@@ -102,7 +113,7 @@ function buildCountTask(a, rng, nEx = 3) {
     meta: { id, rule, concepts: ["counting", "cardinality", a.count_what], prior: "number", difficulty: 0.6, template: "count:" + a.count_what, source: "parameterized", assignment: a, n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } } };
 }
 
-module.exports = { SCHEMA, HUMAN, validAssignment, buildCountTask, makeInstance, layoutTallies, tallyCells, cropToContent };
+module.exports = { SCHEMA, HUMAN, validAssignment, buildCountTask, makeInstance, layoutTallies, tallyCells, cropToContent, placeRoster };
 
 if (require.main === module) {   // demo: build the HUMAN assignment + a NAIVE one, write a comparison jsonl
   const fs = require("fs"); const rng = E.makeRng(7);
