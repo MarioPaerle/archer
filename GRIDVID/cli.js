@@ -702,7 +702,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: useStatic });
       let callModel;
       if (f.stub) { const ex = registry.find(r => r.name === menu.functions[0].name), exText = fs.readFileSync(path.join(templatesDir, ex.file), "utf8").trim(), sd = seedBase + (i++); callModel = async () => "seed " + sd + "\n" + exText; }
-      else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model });
+      else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model, max_tokens: f.maxtok ? +f.maxtok : undefined, temperature: f.temp != null ? +f.temp : undefined });   // --maxtok (thinking models need many) / --temp
       let r; try { r = await llmGenerateOne(prompt, callModel, { retries, examples: f.examples }); }
       catch (e) { stats.failed++; continue; }
       if (!r) { stats.failed++; continue; }
