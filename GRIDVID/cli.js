@@ -734,6 +734,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       const fam = fams[rng.int(0, fams.length - 1)], variants = [];
       for (let kk = 0; kk < K; kk++) { let t = null; for (let tr = 0; tr < 40 && !t; tr++) { try { t = GenHard.buildFamilyTask(fam, E.makeRng(rng.int(1, 1e9)), 3); } catch (e) { t = null; } } if (t && !Baseline.trivialSolve(t)) variants.push(t); }
       if (variants.length < 2) continue;
+      for (let z = variants.length - 1; z > 0; z--) { const j = rng.int(0, z);[variants[z], variants[j]] = [variants[j], variants[z]]; }   // shuffle so the model's choice reflects taste, not position bias
       stats.built++;
       let choice = 0;
       if (f.stub) choice = attempts % variants.length;   // stub: deterministic spread (tests the pipeline)
