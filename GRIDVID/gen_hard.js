@@ -19,6 +19,7 @@ const size = o => o.cells.length;
 const SOLID = ["square", "disc", "plus", "Lshape", "triangle"], HOLED = ["frame", "ring"];
 const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s]) : E.buildShape(kind, [s]);
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
+const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
 
 // place a roster of {cells,...} into disjoint grid cells with jitter → guaranteed non-overlapping, readable.
 function placeRoster(rng, H, W, specs, marginR = 1, marginC = 1) {
@@ -123,6 +124,94 @@ const FAMILIES = {
       const specs = []; for (let i = 0; i < K; i++) { const k = ["Lshape", "triangle", "Tshape", "notch"][rng.int(0, 3)]; specs.push({ cells: shapeCells(k, rng.int(3, 4)), color: pick(rng, 1, [2, 3, 4, 5, 6, 8])[0] }); }
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, cells: flipHcells(o.cells) }))) }; } },
+
+  // ---- PAN-157 breadth batch (2026-06-23): +11 families across all priors + a foundational physics bridge ----
+  recolor_by_size_class: { prior: "number/object", steps: 2, rule: "recolour every small shape red and every large shape blue, by cell-count", concept: ["size", "threshold", "classification"],
+    make(rng) { const H = rng.int(13, 17), W = rng.int(13, 17);
+      const sides = shuffle(rng, [2, 2, 3, 4, 5, 3]).slice(0, rng.int(4, 6));
+      if (!sides.includes(2)) sides[0] = 2; if (!sides.some(s => s >= 3)) sides[1] = 3;
+      const cols = pick(rng, sides.length, [3, 4, 5, 6, 7, 8]);
+      const specs = sides.map((s, i) => ({ cells: shapeCells("square", s), color: cols[i], big: s >= 3 }));
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: o.big ? 1 : 2 }))) }; } },
+
+  gravity_drop: { prior: "object/physics", steps: 2, rule: "every shape falls straight down until it rests on the floor", concept: ["gravity", "physics", "object-permanence"],
+    make(rng) { const K = rng.int(3, 5), H = rng.int(12, 16), W = rng.int(12, 16), bandW = Math.floor(W / K), specs = [];
+      for (let i = 0; i < K; i++) { const cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "triangle"])[0], rng.int(2, 3)), [bh, bw] = bbox(cells);
+        const c = i * bandW + rng.int(0, Math.max(0, bandW - bw)), r = rng.int(0, Math.max(0, H - bh - 3)); specs.push({ cells, color: pick(rng, 1, [2, 3, 4, 6, 8])[0], r, c, bh }); }
+      const IN = render(H, W, specs);
+      return { in: IN, out: render(H, W, specs.map(o => ({ ...o, r: H - o.bh }))) }; } },
+
+  count_to_color: { prior: "number", steps: 2, rule: "count the shapes; the output is a single cell whose colour encodes the count", concept: ["counting", "cardinality", "encoding"],
+    make(rng) { const H = rng.int(11, 15), W = rng.int(11, 15), N = rng.int(1, 6), CMAP = [0, 1, 2, 3, 4, 6, 7, 8, 9];
+      const specs = []; for (let i = 0; i < N; i++) specs.push({ cells: shapeCells(pick(rng, 1, SOLID)[0], rng.int(2, 3)), color: pick(rng, 1, [1, 3, 4, 5, 6, 8])[0] });   // colour varies (count is colour-independent)
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      return { in: IN, out: [[CMAP[N]]] }; } },
+
+  quadrant_recolor: { prior: "geometry", steps: 2, rule: "recolour each shape by the quadrant it sits in: top-left red, top-right green, bottom-left yellow, bottom-right blue", concept: ["position", "quadrant", "spatial"],
+    make(rng) { const H = rng.int(14, 18), W = rng.int(14, 18), midR = H >> 1, midC = W >> 1, QC = { TL: 2, TR: 3, BL: 4, BR: 1 };
+      const quads = shuffle(rng, ["TL", "TR", "BL", "BR"]).slice(0, rng.int(3, 4)), specs = [];
+      for (const q of quads) { const cells = shapeCells("square", rng.int(2, 3)), [bh, bw] = bbox(cells);
+        const r0 = q[0] === 'T' ? 0 : midR, c0 = q[1] === 'L' ? 0 : midC;
+        const r = r0 + rng.int(0, Math.max(0, (q[0] === 'T' ? midR : H) - r0 - bh)), c = c0 + rng.int(0, Math.max(0, (q[1] === 'L' ? midC : W) - c0 - bw));
+        specs.push({ cells, color: pick(rng, 1, [5, 6, 7, 8])[0], r, c, q }); }
+      const IN = render(H, W, specs);
+      return { in: IN, out: render(H, W, specs.map(o => ({ ...o, color: QC[o.q] }))) }; } },
+
+  plurality_color: { prior: "number", steps: 2, rule: "output a block in the colour shared by the most shapes (3-way plurality)", concept: ["counting", "plurality", "most"],
+    make(rng) { const H = rng.int(12, 16), W = rng.int(12, 16), cols = pick(rng, 3, [2, 3, 4, 6, 7, 8]);
+      const plan = [[cols[0], rng.int(3, 4)], [cols[1], rng.int(1, 2)], [cols[2], rng.int(1, 2)]], specs = [];
+      for (const [col, n] of plan) for (let i = 0; i < n; i++) specs.push({ cells: shapeCells(pick(rng, 1, SOLID)[0], 2), color: col });
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      const out = blank(3, 3); for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out[r][c] = cols[0];
+      return { in: IN, out }; } },
+
+  outline_shapes: { prior: "geometry/topology", steps: 2, rule: "replace every solid block by its outline (hollow border), same colour", concept: ["outline", "border", "topology"],
+    make(rng) { const K = rng.int(3, 4), H = rng.int(13, 17), W = rng.int(13, 17), specs = [];
+      for (let i = 0; i < K; i++) { const s = rng.int(3, 5); specs.push({ cells: rectCells(s, s), color: pick(rng, 1, [2, 3, 4, 6, 7, 8])[0], s }); }
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      return { in: IN, out: render(H, W, P.map(o => ({ ...o, cells: outlineCells(o.s, o.s) }))) }; } },
+
+  connect_pairs: { prior: "geometry", steps: 2, rule: "draw a straight line connecting the two dots of each colour", concept: ["connect", "line", "relational"],
+    make(rng) { const H = rng.int(12, 16), W = rng.int(14, 18), K = rng.int(2, 3);
+      const cols = pick(rng, K, [2, 3, 4, 6, 8]), rows = shuffle(rng, Array.from({ length: H }, (_, i) => i)), specs = [], segs = [];
+      for (let i = 0; i < K; i++) { const r = rows[i], c1 = rng.int(0, W - 6), c2 = c1 + rng.int(4, Math.min(W - 1 - c1, 8));
+        specs.push({ cells: [[0, 0]], color: cols[i], r, c: c1 }); specs.push({ cells: [[0, 0]], color: cols[i], r, c: c2 }); segs.push({ r, c1, c2, col: cols[i] }); }
+      const IN = render(H, W, specs), out = IN.map(row => row.slice());
+      for (const s of segs) for (let c = s.c1; c <= s.c2; c++) out[s.r][c] = s.col;
+      return { in: IN, out }; } },
+
+  recolor_by_holes: { prior: "topology", steps: 2, rule: "recolour each shape by whether it has a hole: holed shapes green, solid shapes red", concept: ["hole", "topology", "classification"],
+    make(rng) { const K = rng.int(4, 5), H = rng.int(14, 18), W = rng.int(14, 18), specs = [];
+      for (let i = 0; i < K; i++) { const holed = rng.int(0, 1) === 1, k = holed ? HOLED[rng.int(0, 1)] : SOLID[rng.int(0, 4)]; specs.push({ cells: shapeCells(k, rng.int(3, 4)), color: pick(rng, 1, [1, 4, 6, 7, 8])[0], holed }); }
+      if (!specs.some(s => s.holed)) specs[0] = { cells: shapeCells("frame", 4), color: 6, holed: true };
+      if (!specs.some(s => !s.holed)) specs[1] = { cells: shapeCells("square", 3), color: 7, holed: false };
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: o.holed ? 3 : 2 }))) }; } },
+
+  sort_row_by_size: { prior: "number/geometry", steps: 2, rule: "output one cell per shape, in a row ordered small→large, each in its shape's colour", concept: ["ordering", "rank", "counting"],
+    make(rng) { const K = rng.int(3, 5), H = rng.int(13, 17), W = rng.int(13, 17);
+      const sizes = pick(rng, K, [2, 3, 4, 5, 6]), cols = pick(rng, K, [2, 3, 4, 6, 7, 8]);
+      const specs = sizes.map((s, i) => ({ cells: shapeCells("square", s), color: cols[i] }));
+      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
+      return { in: IN, out: [P.slice().sort((a, b) => size(a) - size(b)).map(o => o.color)] }; } },
+
+  remove_noise: { prior: "object", steps: 2, rule: "remove the scattered single-cell noise; keep the real shapes", concept: ["denoise", "object", "selection"],
+    make(rng) { const K = rng.int(2, 3), H = rng.int(13, 17), W = rng.int(13, 17), specs = [];
+      for (let i = 0; i < K; i++) specs.push({ cells: shapeCells(pick(rng, 1, SOLID)[0], rng.int(3, 4)), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] });
+      const P = placeRoster(rng, H, W, specs), grid = render(H, W, P), nN = rng.int(4, 8); let tries = 0, placed = 0;
+      while (placed < nN && tries < 200) { tries++; const r = rng.int(0, H - 1), c = rng.int(0, W - 1); if (grid[r][c]) continue;
+        let ok = true; for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W && grid[rr][cc]) { ok = false; break; } }
+        if (!ok) continue; grid[r][c] = pick(rng, 1, [2, 3, 4, 6, 8])[0]; placed++; }
+      return { in: grid, out: render(H, W, P) }; } },
+
+  scale_to_majority_size: { prior: "geometry", steps: 2, rule: "every shape is rescaled to match the size of the largest shape", concept: ["scale", "uniform", "geometry"],
+    make(rng) { const K = rng.int(3, 4), H = rng.int(15, 19), W = rng.int(15, 19);
+      const sizes = pick(rng, K, [1, 2, 3]), big = Math.max(...sizes) + 1;   // reserve the BIG footprint so rescaling can't overlap
+      const specs = sizes.map(s => ({ cells: shapeCells("square", big), small: s, color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
+      const P = placeRoster(rng, H, W, specs);
+      const IN = render(H, W, P.map(o => ({ ...o, cells: shapeCells("square", o.small) })));
+      return { in: IN, out: render(H, W, P) }; } },
 };
 
 function buildFamilyTask(famKey, rng, nEx) {

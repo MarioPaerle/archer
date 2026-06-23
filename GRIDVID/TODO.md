@@ -30,6 +30,14 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [ ] More physics: pile-toppling/collapse, chain reactions, fluid + objects floating, magnets/charge fields.
 
 ## ✅ Done
+- [x] (2026-06-23) **PAN-157 — corpus variety + foundational PHYSICS tier.** (a) `gen_hard.js` **10→21 program-first families**
+      (+recolor_by_size_class, gravity_drop, count_to_color, quadrant_recolor, plurality_color, outline_shapes, connect_pairs,
+      recolor_by_holes, sort_row_by_size, remove_noise, scale_to_majority_size) across all 4 priors — all baseline-hard (0 trivial / 220),
+      all eyeballed. Answer-type families emit SMALL human-shaped outputs (1×1 / 3×3 / 1×K). (b) **`gen_physics.js`** — the foundational
+      DYNAMIC tier the `--static` collapse over-pruned: 9 clean short-video templates (gravity_settle/pile_up/bounce_ball/path_follow/
+      shatter_fall/orbit_well/spin_rotate/spill_pool/explode_predict), correct-by-simulation, baseline-hard, prior-tagged, multinode
+      (`--num-nodes/--node-rank`), `--augment` opt (default off = clean). Galleries: `out/exp_new_families.html`, `out/exp_physics.html`.
+      Curriculum = concat `gen_hard.jsonl` + `gen_physics.jsonl`. Remaining: PAN-158 (human-shaped audit of OLD families), even more families.
 - [x] (2026-06-22) **Generator breadth sweep + CINECA Qwen pipeline.** G1 boolean figure-algebra (`combine`/`overlay_figs`, PAN-127) ·
       G4 analogy/series/odd-one-out (`odd by PROP`/`bind_transform`+`apply`/`progress`, PAN-128) · G7 `grid_complete` (PAN-131) · G5 `unfold`
       paper-folding (PAN-129) · `repeat rand LO HI`. **`cli.js generate-llm`** = the Qwen-in-the-loop generator (proposer→prompt-kit→model→verify→
