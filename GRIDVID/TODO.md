@@ -27,6 +27,15 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-23) **Qwen quality fixes (Mario: "every Qwen task is broken").** Diagnosed + fixed the free-author path:
+      (1) **k=1** (one rule, no composition) · **static-only** (no physics/video) · **no augmentation** — defaults for `generate-llm`
+      (`--dynamic`/`--k` to opt back). (2) Engine **`spawn random` keeps a 1-cell gap** (Chebyshev) — objects never touch/merge.
+      (3) **Colour-grounding guard** `outColorsGrounded`: every OUT colour must already appear in the IN — rejects "magic" answer/overlap/
+      token colours (the exact correlate of Mario's "no sense / wrong / embarrassing": classify_convex token, figure_overlay colour, count
+      bar colour). (4) Prompt hard-rules: one clean rule, 3–6 objects placed only with `random` over a large box (no fixed `at`/tiny boxes),
+      no `vary`, FIXED copy-offset, keep shapes clear of the border. Re-tested on CINECA Qwen each round (before=rule-salad → after=single
+      clear grounded rules, 0 dynamic). **Still open:** residual overlap from `at`/copy free-authoring → the real path is reconciliation
+      (Qwen ranks/fills/proposes on program-first tasks, not free-authors); "make Qwen more human"; try another model.
 - [x] (2026-06-23) **Mario round 3: abstract pointers · maze overhaul · morph/replicant · magnet fix.** gen_hard 29→**32 families**.
       **Abstract pointer glyphs:** beyond the triangle — `arrow` (head+shaft ↑), `vee` (caret ^), `hollow` outline, + diagonal chevron;
       ray emanates from each glyph's computed tip (frontmost cell). **Maze overhaul** (new `maze.js`, 3 algorithms: backtracker/Prim/binary-tree
