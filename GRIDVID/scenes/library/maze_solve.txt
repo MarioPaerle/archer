@@ -1,0 +1,9 @@
+# VIDEO: a maze is generated, then solved — the BFS frontier explores and the solution path is traced.
+rule the maze is explored and the path from start to goal is found
+concept maze pathfinding solve spatial physics
+difficulty 0.6
+grid 19 19
+maze wall 5 solve 3
+hold 1
+cut
+run 60

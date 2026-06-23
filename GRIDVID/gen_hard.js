@@ -25,16 +25,46 @@ const transposeCells = cells => cells.map(([r, c]) => [c, r]);
 // Bresenham line cells from (r0,c0) to (r1,c1) inclusive.
 const bres = (r0, c0, r1, c1) => { const o = [], dr = Math.abs(r1 - r0), dc = Math.abs(c1 - c0), sr = r0 < r1 ? 1 : -1, sc = c0 < c1 ? 1 : -1; let err = dr - dc, r = r0, c = c0;
   while (true) { o.push([r, c]); if (r === r1 && c === c1) break; const e2 = 2 * err; if (e2 > -dc) { err -= dc; r += sr; } if (e2 < dr) { err += dr; c += sc; } } return o; };
-// arrow/pointer cells (a filled triangle whose apex points `dir`). Humans read it as pointing. DIRV = the ray direction.
-const DIRV = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+// arrow/pointer cells. Humans read a triangle/arrowhead as POINTING. DIRV = the ray direction. 8-way: 4 axis + 4 diagonal.
+const DIRV = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1], ne: [-1, 1], nw: [-1, -1], se: [1, 1], sw: [1, -1] };
+const AXIS = ["up", "down", "left", "right"], DIAG = ["ne", "nw", "se", "sw"];
 const triUp = n => { const o = []; for (let r = 0; r < n; r++) { const w = 2 * r + 1, s = (n - 1) - r; for (let k = 0; k < w; k++) o.push([r, s + k]); } return o; };
 const arrowCells = (dir, n) => { let c = triUp(n); if (dir === "down") c = flipVcells(c); else if (dir === "left") c = transposeCells(c); else if (dir === "right") c = flipHcells(transposeCells(c)); return c; };
-const apexOf = (dir, n) => dir === "up" ? [0, n - 1] : dir === "down" ? [n - 1, n - 1] : dir === "left" ? [n - 1, 0] : [n - 1, n - 1];   // apex cell (relative to arrow's top-left), used as the ray origin
+const hollowOutline = cells => { const set = new Set(cells.map(([r, c]) => r + "," + c)); return cells.filter(([r, c]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dr, dc]) => !set.has((r + dr) + "," + (c + dc)))); };
+// diagonal pointer = a chevron: two arms of length n meeting at the tip corner (reads as pointing to that corner).
+const chevron = (dir, n) => { const o = new Set(), add = (r, c) => o.add(r + "," + c);
+  for (let i = 0; i < n; i++) { if (dir === "ne") { add(i, n - 1); add(0, i); } else if (dir === "nw") { add(i, 0); add(0, i); } else if (dir === "se") { add(i, n - 1); add(n - 1, i); } else { add(i, 0); add(n - 1, i); } }
+  return [...o].map(s => s.split(",").map(Number)); };
+const pointerCells = (dir, n, hollow) => DIAG.includes(dir) ? chevron(dir, n) : (hollow ? hollowOutline(arrowCells(dir, n)) : arrowCells(dir, n));
+const axisApex = (dir, n) => dir === "up" ? [0, n - 1] : dir === "down" ? [n - 1, n - 1] : dir === "left" ? [n - 1, 0] : [n - 1, n - 1];
+const pointerApex = (dir, n) => DIAG.includes(dir) ? (dir === "ne" ? [0, n - 1] : dir === "nw" ? [0, 0] : dir === "se" ? [n - 1, n - 1] : [n - 1, 0]) : axisApex(dir, n);
 
 // gap-enforced placement (every object separated by >= 1 empty cell, so boundaries are always clear and
 // same-colour objects never merge). Canonical impl lives in gen_count.js; reused here to stay in sync.
 const placeRoster = C.placeRoster;
 const RANKPAL = [2, 3, 4, 1, 8, 6];   // colours by ascending rank
+
+// shared setup for pointer/ray families: place an arrow (8-way, filled/hollow/diagonal) with room ahead, expose its
+// ray cells and a gap-respecting placer for on-ray / off-ray shapes. Throws if the grid can't fit it (gen loop drops).
+function pointerScene(rng, H, W, gap = 1) {
+  const dir = pick(rng, 1, [...AXIS, ...DIAG])[0], dv = DIRV[dir], n = rng.int(2, 4), hollow = !DIAG.includes(dir) && rng.int(0, 1) === 1;
+  const aCells = pointerCells(dir, n, hollow), [ah, aw] = bbox(aCells), occ = blank(H, W);
+  const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
+  const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
+  let ar, ac, apR, apC, rayCells = null;
+  for (let t = 0; t < 500; t++) { ar = rng.int(0, H - ah); ac = rng.int(0, W - aw); if (!free(aCells, ar, ac)) continue;
+    const ap = pointerApex(dir, n); apR = ar + ap[0]; apC = ac + ap[1];
+    const rc = []; let r = apR + dv[0], c = apC + dv[1]; while (r >= 0 && c >= 0 && r < H && c < W) { rc.push([r, c]); r += dv[0]; c += dv[1]; }
+    if (rc.length >= 5) { rayCells = rc; break; } }
+  if (!rayCells) throw new Error("pointerScene: no room ahead");
+  mark(aCells, ar, ac);
+  const rayset = new Set(rayCells.map(([r, c]) => r + "," + c)), onRay = (cells, r, c) => cells.some(([dr, dc]) => rayset.has((r + dr) + "," + (c + dc)));
+  const place = wantOn => { for (let t = 0; t < 300; t++) { const s = rng.int(2, 3), cells = shapeCells("square", s); let r, c;
+    if (wantOn) { const p = rayCells[rng.int(Math.min(2, rayCells.length - 1), rayCells.length - 1)]; r = Math.max(0, Math.min(H - s, p[0] - rng.int(0, s - 1))); c = Math.max(0, Math.min(W - s, p[1] - rng.int(0, s - 1))); }
+    else { r = rng.int(0, H - s); c = rng.int(0, W - s); }
+    if (onRay(cells, r, c) !== wantOn) continue; if (free(cells, r, c)) return { cells, r, c }; } return null; };
+  return { dir, dv, arrow: { cells: aCells, r: ar, c: ac, color: 5, arrow: true }, rayCells, place, mark, free };
+}
 
 // ---- rule families. prior ∈ object|number|geometry|topology|relational. make(rng) → {in, out} int-grids. ----
 const FAMILIES = {
@@ -241,29 +271,26 @@ const FAMILIES = {
       for (const col of cols) { const [a, b] = byCol[col]; for (const [r, c] of bres(a.r + 1, a.c + 1, b.r + 1, b.c + 1)) if (out[r][c] === 0) out[r][c] = col; }   // link the two same-colour shapes; only fill empty cells
       return { in: IN, out }; } },
 
-  point_select: { prior: "object", steps: 2, rule: "recolour the shape the arrow points at; leave the others unchanged", concept: ["pointing", "selection", "direction", "arrow"],
-    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), gap = 1, dir = pick(rng, 1, ["up", "down", "left", "right"])[0], dv = DIRV[dir], n = rng.int(2, 3);
-      const aCells = arrowCells(dir, n), [ah, aw] = bbox(aCells), occ = blank(H, W);
-      const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
-      const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
-      let ar = 0, ac = 0;   // bias the arrow so there is room AHEAD of it
-      for (let t = 0; t < 300; t++) { ar = dir === "up" ? rng.int(Math.floor(H / 2), H - ah) : dir === "down" ? rng.int(0, Math.max(0, Math.floor(H / 2) - ah)) : rng.int(0, H - ah);
-        ac = dir === "left" ? rng.int(Math.floor(W / 2), W - aw) : dir === "right" ? rng.int(0, Math.max(0, Math.floor(W / 2) - aw)) : rng.int(0, W - aw); if (free(aCells, ar, ac)) break; }
-      mark(aCells, ar, ac); const apex = apexOf(dir, n), apR = ar + apex[0], apC = ac + apex[1];
-      const place = onray => { for (let t = 0; t < 300; t++) { const s = rng.int(2, 3), cells = shapeCells("square", s); let r, c, ok;
-        if (dv[0] !== 0) { c = onray ? Math.max(0, Math.min(W - s, apC - rng.int(0, s - 1))) : rng.int(0, W - s); r = dir === "up" ? rng.int(0, Math.max(0, apR - s - 1)) : (apR + 1) + rng.int(0, Math.max(0, H - s - apR - 1)); ok = (c <= apC && apC <= c + s - 1) === onray; }
-        else { r = onray ? Math.max(0, Math.min(H - s, apR - rng.int(0, s - 1))) : rng.int(0, H - s); c = dir === "left" ? rng.int(0, Math.max(0, apC - s - 1)) : (apC + 1) + rng.int(0, Math.max(0, W - s - apC - 1)); ok = (r <= apR && apR <= r + s - 1) === onray; }
-        if (ok && free(cells, r, c)) return { cells, r, c }; } return null; };
-      const tgt = place(true); if (!tgt) throw new Error("point_select: no on-ray target");
-      const objs = [{ cells: aCells, r: ar, c: ac, color: 5, arrow: true }, { cells: tgt.cells, r: tgt.r, c: tgt.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0], target: true }]; mark(tgt.cells, tgt.r, tgt.c);
-      const nD = rng.int(1, 3); for (let i = 0; i < nD; i++) { const d = place(false); if (d) { objs.push({ cells: d.cells, r: d.r, c: d.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }); mark(d.cells, d.r, d.c); } }
-      const IN = render(H, W, objs), out = objs.map(o => o.target ? { ...o, color: 7 } : o);
-      return { in: IN, out: render(H, W, out) }; } },
+  point_select: { prior: "object", steps: 2, rule: "recolour the shape the pointer points at (along its direction); leave the others unchanged", concept: ["pointing", "selection", "direction", "arrow"],
+    make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20), S = pointerScene(rng, H, W);
+      const tgt = S.place(true); if (!tgt) throw new Error("point_select: no on-ray target"); S.mark(tgt.cells, tgt.r, tgt.c);
+      const objs = [S.arrow, { cells: tgt.cells, r: tgt.r, c: tgt.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0], target: true }];
+      const nD = rng.int(1, 3); for (let i = 0; i < nD; i++) { const d = S.place(false); if (d) { S.mark(d.cells, d.r, d.c); objs.push({ cells: d.cells, r: d.r, c: d.c, color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }); } }
+      const IN = render(H, W, objs); return { in: IN, out: render(H, W, objs.map(o => o.target ? { ...o, color: 7 } : o)) }; } },
 
-  count_arrows: { prior: "number", steps: 2, rule: "count the arrows that point up; show the count as a vertical tally", concept: ["pointing", "counting", "direction", "arrow"],
-    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), K = rng.int(3, 6), nUp = rng.int(1, Math.min(4, K));
-      const dirs = []; for (let i = 0; i < nUp; i++) dirs.push("up"); for (let i = nUp; i < K; i++) dirs.push(pick(rng, 1, ["down", "left", "right"])[0]);
-      const specs = shuffle(rng, dirs).map(d => ({ cells: arrowCells(d, rng.int(2, 3)), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
+  point_ray: { prior: "geometry", steps: 2, rule: "the pointer emits a beam in its direction; the beam travels until it hits a shape", concept: ["pointing", "ray", "beam", "emission"],
+    make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20), S = pointerScene(rng, H, W);
+      const tgt = S.place(true); if (!tgt) throw new Error("point_ray: no on-ray target"); S.mark(tgt.cells, tgt.r, tgt.c);
+      const objs = [S.arrow, { cells: tgt.cells, r: tgt.r, c: tgt.c, color: pick(rng, 1, [2, 3, 6, 8])[0] }];
+      const nD = rng.int(0, 2); for (let i = 0; i < nD; i++) { const d = S.place(false); if (d) { S.mark(d.cells, d.r, d.c); objs.push({ cells: d.cells, r: d.r, c: d.c, color: pick(rng, 1, [2, 3, 6, 8])[0] }); } }
+      const IN = render(H, W, objs), out = IN.map(r => r.slice());
+      for (const [r, c] of S.rayCells) { if (IN[r][c]) break; out[r][c] = 4; }   // beam (yellow) from the tip to the first shape it hits
+      return { in: IN, out }; } },
+
+  count_arrows: { prior: "number", steps: 2, rule: "count the pointers that point up; show the count as a vertical tally", concept: ["pointing", "counting", "direction", "arrow"],
+    make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20), K = rng.int(3, 6), nUp = rng.int(1, Math.min(4, K)), others = ["down", "left", "right", "ne", "nw", "se", "sw"];
+      const dirs = []; for (let i = 0; i < nUp; i++) dirs.push("up"); for (let i = nUp; i < K; i++) dirs.push(pick(rng, 1, others)[0]);
+      const specs = shuffle(rng, dirs).map(d => ({ cells: pointerCells(d, rng.int(2, 3), !DIAG.includes(d) && rng.int(0, 1) === 1), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] }));
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
       const g = blank(H, W); for (let i = 0; i < nUp; i++) g[i * 2][0] = 5; return { in: IN, out: C.cropToContent(g) }; } },   // small human-shaped grey tally
 
@@ -297,6 +324,24 @@ function buildFamilyTask(famKey, rng, nEx) {
   };
 }
 
+// program-first VIDEO of a pointer launching a ray: IN = arrow + target (+ distractors); OUT = the beam growing one
+// cell per frame from the tip until it hits the target. Crisp 8-way arrows (same as point_ray), per-example variation
+// from random direction/position → non-constant. base seeds the rng so it is deterministic for the gen loop.
+function buildBeamVideo(base, nEx) {
+  const rng = E.makeRng(base * 2654435761 + 17), H = rng.int(14, 18), W = rng.int(17, 22);
+  const one = () => { const S = pointerScene(rng, H, W); const tgt = S.place(true); if (!tgt) throw new Error("beam: no target"); S.mark(tgt.cells, tgt.r, tgt.c);
+    const objs = [S.arrow, { cells: tgt.cells, r: tgt.r, c: tgt.c, color: pick(rng, 1, [2, 3, 6, 8])[0] }];
+    const nD = rng.int(0, 2); for (let i = 0; i < nD; i++) { const d = S.place(false); if (d) { S.mark(d.cells, d.r, d.c); objs.push({ cells: d.cells, r: d.r, c: d.c, color: pick(rng, 1, [2, 3, 6, 8])[0] }); } }
+    const base0 = render(H, W, objs), beam = []; for (const [r, c] of S.rayCells) { if (base0[r][c]) break; beam.push([r, c]); }
+    const outFrames = []; let g = base0.map(r => r.slice()); for (const [r, c] of beam) { g = g.map(row => row.slice()); g[r][c] = 4; outFrames.push(g); }
+    if (!outFrames.length) outFrames.push(base0.map(r => r.slice()));
+    return { in: [base0], out: outFrames }; };
+  const examples = []; for (let i = 0; i < nEx; i++) examples.push(one()); const test = one();
+  const id = "BEAM-" + crypto.createHash("sha1").update(JSON.stringify([examples, test])).digest("hex").slice(0, 8);
+  return { format: "prodigy-task", version: 1, width: W, height: H, palette: "arc10", fps: 2, examples, in: test.in, out: test.out,
+    meta: { id, rule: "the pointer launches a beam that extends in its direction until it hits a shape", concepts: ["pointing", "ray", "beam", "emission", "video"], prior: "geometry/physics", difficulty: 0.5, template: "phys:beam_video", source: "physics", dynamic: true, tier: "physics", n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } } };
+}
+
 if (require.main === module) {
   const args = process.argv.slice(2), f = { n: 40, out: "out/hard.jsonl" };
   for (let i = 0; i < args.length; i++) { if (args[i] === "--n") f.n = +args[++i]; else if (args[i] === "-o") f.out = args[++i]; else if (args[i] === "--seed") f.seed = +args[++i]; }
@@ -317,4 +362,4 @@ if (require.main === module) {
   console.log("  families (" + keys.length + "): " + Object.entries(byFam).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ":" + v).join("  "));
   console.log("  PRIOR coverage: " + Object.entries(byPrior).map(([k, v]) => k + ":" + v).join("  "));
 }
-module.exports = { FAMILIES, buildFamilyTask };
+module.exports = { FAMILIES, buildFamilyTask, buildBeamVideo };

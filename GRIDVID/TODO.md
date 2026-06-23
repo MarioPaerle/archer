@@ -7,29 +7,32 @@ Running list. Newest priorities on top. Done items move to the bottom.
 > Generation backlog currently: PAN-114/123 (sampler+throughput) · PAN-119/120 (combinators+auto-compose) ·
 > PAN-121/122 (prompt-kit + retry loop) · PAN-115/116 (IQ priors + Qwen novelty) · PAN-124 (semantic guard) · PAN-117 (objectives).
 
-## 🔜 Next up
-- [ ] **Online IQ / matrix-reasoning tests → DSL** — collect the ABSTRACT transformations behind classic
-      non-verbal IQ items (Raven's Progressive Matrices, odd-one-out, analogies, series). Do NOT copy
-      copyrighted items — re-encode the *transformation type* as new DSL templates to pull the dataset more
-      in-distribution for ARC and get fresh inspiration. (matrices = 3×3 analogy grids → composable with our
-      whole-grid + object verbs.)
-- [ ] **Qwen generation prompt** — instruct Qwen-30B to MIX templates and add a genuine twist of its own
-      (not copy the examples). Haiku currently mostly reproduces patterns; the prompt must reward novelty
-      (new compositions, a surprising OUT, a twist on the rule) while the engine guard keeps coherence.
+## 🔜 Open — larger tracked efforts (each is its own multi-session piece, NOT quick wins; on Linear)
+- [ ] **Online IQ / matrix-reasoning tests → DSL** (PAN-115) — re-encode the ABSTRACT transformation types behind
+      Raven's matrices / analogies / series as new templates (never copy copyrighted items). Pulls the corpus more
+      in-distribution. (G4/G7 already cover analogy/series/matrix-completion in the engine; this is the curation pass.)
+- [ ] **PAN-119/120** — typed combinators `program.js` AST (dispatch is its runtime core) + auto-compose 2 templates without the LLM.
+- [ ] **G6** (PAN-130): `assemble`/`tile_cover`/`section` · **G5 fold/find** · **G4 iterate/cycle** (engine verbs).
+- [ ] **Studio UI** (`index.html`) → 3-pane triple editor (EXAMPLES | IN | OUT) + Export-as-task (frontend).
+- [ ] More coherence guards as new nonsense patterns appear (ongoing free filter; add on sight).
 
-## 🧪 Engine / DSL
-- [ ] More coherence guards as new nonsense patterns appear (the free filter).
-- [x] `repeat rand LO HI` (variable counts in macros) — DONE 2026-06-22 (macro-time rng from the scene seed).
-- [x] Objectives/tokenizer export — DONE 2026-06-22 (`cli.js export-objectives`: arc_pair/next_frame/inverse_dynamics/object_aux).
-- [ ] **PAN-119/120**: typed combinators `program.js` AST (dispatch is its runtime core) + auto-compose 2 templates without the LLM.
-- [ ] **G6** (PAN-130): `assemble`/`tile_cover`/`section`. · **G5 fold/find** · **G4 iterate/cycle**.
-- [ ] Studio UI (`index.html`) → 3-pane triple editor (EXAMPLES | IN | OUT) + Export-as-task.
+## 🧪 Engine / DSL — done
+- [x] `repeat rand LO HI` (variable counts in macros) — 2026-06-22 (macro-time rng from the scene seed).
+- [x] Objectives/tokenizer export — 2026-06-22 (`cli.js export-objectives`: arc_pair/next_frame/inverse_dynamics/object_aux).
 
-## 🎨 Content
-- [ ] Keep growing the template library past 39 (target 60-80 across all priors).
-- [ ] More physics: pile-toppling/collapse, chain reactions, fluid + objects floating, magnets/charge fields.
+## 🎨 Content — done
+- [x] Template library past target: **61 scene templates** (was 39) + **29 program-first families** in `gen_hard.js` across all priors.
+- [x] Qwen novelty prompt (PAN-116) — `generate-llm` rewards mixing + a twist while the engine guard keeps coherence.
+- [x] More physics: **magnets** (`magnet_dock`), maze pathfinding (`maze_solve`), pointer beams (`beam_video`) added to the
+      foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-23) **Pointer enrichment + ray (static & video) + more physics (Mario).** gen_hard 28→**29 families**, gen_physics 9→**12**.
+      **Pointers:** 8-way directions (4 axis + 4 **diagonal chevrons**), **hollow** triangles, via `pointerCells`/`pointerScene`. `point_select`
+      now covers all 8 dirs + filled/hollow; `count_arrows` too. **Ray launched — STATIC:** `point_ray` (beam from the tip to the first shape
+      it hits, any of 8 directions). **Ray launched — VIDEO:** `beam_video` (program-first multi-frame: the beam extends one cell per frame
+      from the tip to the target; crisp arrows; per-example variation). **More physics tier:** `maze_solve` (BFS pathfinding), `magnet_dock`
+      (same-group magnets dock). All eyeballed; self-test green (library 59→61, count updated).
 - [x] (2026-06-23) **Connecting + POINTING + SHADOW-CASTING + count_total fix (Mario).** gen_hard 23→28 families.
       **Connecting (richer):** `connect_in_order` (dots connected into one path in COLOUR order red→green→yellow→blue→cyan; crossings are
       grey-on-grey so the order stays unambiguous) · `connect_shape_pairs` (link the two same-colour SHAPES with a line of that colour; pairs

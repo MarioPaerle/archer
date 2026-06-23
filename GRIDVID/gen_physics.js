@@ -6,7 +6,7 @@
  * baseline-hard filtered, prior-tagged, deduped, multinode-capable. Mix into the curriculum alongside gen_hard.
  *   node gen_physics.js --n 60 -o out/physics.jsonl [--augment] [--num-nodes W --node-rank R]                  */
 const fs = require("fs"), path = require("path"), crypto = require("crypto");
-const E = require("./engine.js"), B = require("./baseline.js");
+const E = require("./engine.js"), B = require("./baseline.js"), GH = require("./gen_hard.js");
 
 const SCN = f => fs.readFileSync(path.join(__dirname, "scenes/library", f + ".txt"), "utf8");
 // curated foundational templates: each teaches a core physical prior cleanly. prior ∈ object|number|geometry|topology + physics.
@@ -20,10 +20,14 @@ const TEMPLATES = [
   { key: "spin_rotate", prior: "geometry/physics", concept: ["rotation", "spin", "transform"], diff: 0.5 },
   { key: "spill_pool", prior: "topology/physics", concept: ["fluid", "containment", "flow"], diff: 0.5 },
   { key: "explode_predict", prior: "object/physics", concept: ["explosion", "radial", "prediction"], diff: 0.65 },
+  { key: "beam_video", prior: "geometry/physics", concept: ["pointing", "ray", "beam", "emission"], diff: 0.5, build: true },   // program-first video (gen_hard.buildBeamVideo): a pointer launches a beam that extends frame by frame
+  { key: "maze_solve", prior: "geometry/physics", concept: ["maze", "pathfinding", "spatial"], diff: 0.6 },
+  { key: "magnet_dock", prior: "object/physics", concept: ["magnet", "grouping", "attraction"], diff: 0.55 },
 ];
-const TEXT = Object.fromEntries(TEMPLATES.map(t => [t.key, SCN(t.key)]));
+const TEXT = Object.fromEntries(TEMPLATES.filter(t => !t.build).map(t => [t.key, SCN(t.key)]));   // build-templates have no scene file
 
 function buildPhysicsTask(tmpl, base, nEx, augment) {
+  if (tmpl.build) return GH.buildBeamVideo(base, nEx);   // program-first video template
   const t = E.buildTask(TEXT[tmpl.key], { examples: nEx, exSeeds: Array.from({ length: nEx }, (_, i) => base + 1 + i), testSeed: base + nEx + 1, augment });
   const id = "PHY-" + crypto.createHash("sha1").update(JSON.stringify([t.examples, t.in, t.out])).digest("hex").slice(0, 8);
   t.meta = Object.assign({}, t.meta, { id, prior: tmpl.prior, tier: "physics", dynamic: true, difficulty: tmpl.diff, template: "phys:" + tmpl.key, source: "physics", concepts: tmpl.concept });
