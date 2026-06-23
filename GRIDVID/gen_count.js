@@ -63,6 +63,14 @@ function layoutTallies(H, W, tallies, a) {
   return g;
 }
 
+// size the OUTPUT to its content (a small answer grid — don't waste a giant mostly-empty grid). 1-cell margin.
+function cropToContent(g, margin = 1) {
+  let r0 = 1e9, r1 = -1, c0 = 1e9, c1 = -1;
+  for (let r = 0; r < g.length; r++) for (let c = 0; c < g[0].length; c++) if (g[r][c]) { if (r < r0) r0 = r; if (r > r1) r1 = r; if (c < c0) c0 = c; if (c > c1) c1 = c; }
+  if (r1 < 0) return [[0]];
+  r0 = Math.max(0, r0 - margin); c0 = Math.max(0, c0 - margin); r1 = Math.min(g.length - 1, r1 + margin); c1 = Math.min(g[0].length - 1, c1 + margin);
+  const o = []; for (let r = r0; r <= r1; r++) { const row = []; for (let c = c0; c <= c1; c++) row.push(g[r][c]); o.push(row); } return o;
+}
 const KINDS = ["square", "disc", "plus", "Lshape", "triangle"];
 function makeInstance(rng, a) {
   const H = rng.int(13, 18), W = rng.int(13, 18);
@@ -80,7 +88,7 @@ function makeInstance(rng, a) {
   if (a.count_what === "total") tallies = [{ n: placed.length, color: a.mark === "match" ? (palette[0]) : fixed }];
   else if (a.count_what === "per_color") { const by = {}; for (const o of placed) by[o.color] = (by[o.color] || 0) + 1; tallies = Object.entries(by).sort((x, y) => x[0] - y[0]).map(([c, n]) => ({ n, color: a.mark === "match" ? +c : fixed })); }
   else { const by = {}; for (const o of placed) by[o.kind] = (by[o.kind] || 0) + 1; const kc = {}; placed.forEach(o => kc[o.kind] = o.color); tallies = Object.entries(by).map(([k, n]) => ({ n, color: a.mark === "match" ? kc[k] : fixed })); }
-  const OUT = layoutTallies(H, W, tallies, a);
+  const OUT = cropToContent(layoutTallies(H, W, tallies, a));   // small answer grid, not a giant mostly-empty one
   return { in: IN, out: OUT };
 }
 
