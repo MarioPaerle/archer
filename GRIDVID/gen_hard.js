@@ -20,6 +20,26 @@ const SOLID = ["square", "disc", "plus", "Lshape", "triangle"], HOLED = ["frame"
 const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s]) : E.buildShape(kind, [s]);
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
 const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
+
+// ---- SHAPE vocab + SKINS (Mario: more than square/circle; objects not all plain; sub-object presence). ----
+const SHAPES_ALL = ["square", "disc", "plus", "Lshape", "triangle", "diamond", "Tshape"];   // broad shape vocab
+const SKINS = ["plain", "plain", "plain", "core", "border", "cross"];                        // plain weighted (MUST stay; easiest, teaches a lot)
+// paint baseCells with internal structure → [[dr,dc,col],...]. accent = the sub-object colour; col 0 = a hole (left bg).
+function skinnedCells(baseCells, skin, color, accent) {
+  const [h, w] = bbox(baseCells), set = new Set(baseCells.map(([r, c]) => r + "," + c));
+  const interior = (r, c) => [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dr, dc]) => set.has((r + dr) + "," + (c + dc)));
+  const cr = Math.round((h - 1) / 2), cc = Math.round((w - 1) / 2);
+  return baseCells.map(([r, c]) => {
+    let col = color;
+    if (skin === "core") { if (r === cr && c === cc) col = accent; }                 // central sub-object cell
+    else if (skin === "border") { if (interior(r, c)) col = accent; }               // outline = colour, inside = accent
+    else if (skin === "cross") { if (r === cr || c === cc) col = accent; }          // a plus of accent through the centre
+    else if (skin === "hole") { if (r === cr && c === cc) col = 0; }                // a punched hole at the centre
+    return [r, c, col];
+  });
+}
+// render objects honouring per-object skins (multi-colour / sub-objects). objs: {cells,r,c,color[,skin,accent]}.
+const renderSkinned = (H, W, objs) => { const g = blank(H, W); for (const o of objs) { const cells = o.skin ? skinnedCells(o.cells, o.skin, o.color, o.accent) : o.cells.map(([r, c]) => [r, c, o.color]); for (const [dr, dc, col] of cells) { const rr = o.r + dr, ccc = o.c + dc; if (col && rr >= 0 && ccc >= 0 && rr < H && ccc < W) g[rr][ccc] = col; } } return g; };
 const flipVcells = cells => { const [h] = bbox(cells); return cells.map(([r, c]) => [h - 1 - r, c]); };
 const transposeCells = cells => cells.map(([r, c]) => [c, r]);
 // Bresenham line cells from (r0,c0) to (r1,c1) inclusive.
@@ -104,8 +124,6 @@ const FAMILIES = {
     make: rng => C.makeInstance(rng, { count_what: "total", orient: "v", spacing: "spaced", place: "center", mark: "fixed" }) },   // FIXED marker (grey, never a shape colour) — a total is colour-independent; "match" picked an arbitrary input colour that changed every example (unlearnable)
   count_per_color: { prior: "number", steps: 2, rule: "count the shapes of each colour; show one vertical spaced tally per colour, colour-matched", concept: ["counting", "per-colour", "tally"],
     make: rng => C.makeInstance(rng, { count_what: "per_color", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
-  count_per_kind: { prior: "number", steps: 2, rule: "count the shapes of each kind; show one vertical spaced tally per kind, colour-matched", concept: ["counting", "per-kind", "tally"],
-    make: rng => C.makeInstance(rng, { count_what: "per_kind", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
 
   compare_more: { prior: "number", steps: 2, rule: "output a single block in the colour that has MORE shapes (red vs blue)", concept: ["comparison", "most", "counting"],
     make(rng) { const H = rng.int(18, 22), W = rng.int(18, 22);
@@ -186,11 +204,6 @@ const FAMILIES = {
       const IN = render(H, W, specs);
       return { in: IN, out: render(H, W, specs.map(o => ({ ...o, r: H - o.bh }))) }; } },
 
-  count_to_color: { prior: "number", steps: 2, rule: "count the shapes; the output is a single cell whose colour encodes the count", concept: ["counting", "cardinality", "encoding"],
-    make(rng) { const H = rng.int(14, 18), W = rng.int(14, 18), N = rng.int(1, 6), CMAP = [0, 1, 2, 3, 4, 6, 7, 8, 9];
-      const specs = []; for (let i = 0; i < N; i++) specs.push({ cells: shapeCells(pick(rng, 1, SOLID)[0], rng.int(2, 3)), color: pick(rng, 1, [1, 3, 4, 5, 6, 8])[0] });   // colour varies (count is colour-independent)
-      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
-      return { in: IN, out: [[CMAP[N]]] }; } },
 
   quadrant_recolor: { prior: "geometry", steps: 2, rule: "recolour each shape by the quadrant it sits in: top-left red, top-right green, bottom-left yellow, bottom-right blue", concept: ["position", "quadrant", "spatial"],
     make(rng) { const H = rng.int(17, 21), W = rng.int(17, 21), midR = H >> 1, midC = W >> 1, QC = { TL: 2, TR: 3, BL: 4, BR: 1 };
@@ -243,12 +256,12 @@ const FAMILIES = {
 
   remove_noise: { prior: "object", steps: 2, rule: "remove the scattered single-cell noise; keep the real shapes", concept: ["denoise", "object", "selection"],
     make(rng) { const K = rng.int(2, 3), H = rng.int(16, 20), W = rng.int(16, 20), specs = [];
-      for (let i = 0; i < K; i++) specs.push({ cells: shapeCells(pick(rng, 1, SOLID)[0], rng.int(3, 4)), color: pick(rng, 1, [2, 3, 4, 6, 8])[0] });
-      const P = placeRoster(rng, H, W, specs), grid = render(H, W, P), nN = rng.int(4, 8); let tries = 0, placed = 0;
+      for (let i = 0; i < K; i++) { const color = pick(rng, 1, [2, 3, 4, 6, 8])[0]; specs.push({ cells: shapeCells(pick(rng, 1, SHAPES_ALL)[0], rng.int(3, 4)), color, skin: pick(rng, 1, SKINS)[0], accent: pick(rng, 1, [1, 5, 7, 9].filter(x => x !== color))[0] }); }   // varied shapes + skins (not all plain squares)
+      const P = placeRoster(rng, H, W, specs), grid = renderSkinned(H, W, P), nN = rng.int(4, 8); let tries = 0, placed = 0;
       while (placed < nN && tries < 200) { tries++; const r = rng.int(0, H - 1), c = rng.int(0, W - 1); if (grid[r][c]) continue;
         let ok = true; for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1; b++) { const rr = r + a, cc = c + b; if (rr >= 0 && cc >= 0 && rr < H && cc < W && grid[rr][cc]) { ok = false; break; } }   // 8-neighbour isolation (no diagonal touch either)
         if (!ok) continue; grid[r][c] = pick(rng, 1, [2, 3, 4, 6, 8])[0]; placed++; }
-      return { in: grid, out: render(H, W, P) }; } },
+      return { in: grid, out: renderSkinned(H, W, P) }; } },
 
   scale_to_majority_size: { prior: "geometry", steps: 2, rule: "every shape is rescaled to match the size of the largest shape", concept: ["scale", "uniform", "geometry"],
     make(rng) { const K = rng.int(3, 4), H = rng.int(18, 22), W = rng.int(18, 22);
@@ -333,6 +346,24 @@ const FAMILIES = {
       if (!specs.some(o => o.color === cols[0])) specs[0].color = cols[0]; if (!specs.some(o => o.color === cols[1])) specs[1].color = cols[1];
       const P = placeRoster(rng, H, W, specs);   // reserve the full bbox → the per-colour flip keeps the gap
       return { in: render(H, W, P.map(o => ({ ...o, cells: o.shape }))), out: render(H, W, P.map(o => ({ ...o, cells: fn[o.color](o.shape) }))) }; } },
+
+  // ---- 2026-06-23 (Mario): SUB-OBJECT families — objects have internal structure (a core / pattern), not just plain. ----
+  extract_by_core: { prior: "object", steps: 2, rule: "keep only the object whose central core is red; remove the others", concept: ["subobject", "core", "selection", "relational"],
+    make(rng) { const K = rng.int(3, 5), H = rng.int(16, 20), W = rng.int(16, 20), body = pick(rng, 1, [1, 5, 8])[0];
+      const cores = pick(rng, K, [3, 4, 6, 7, 9].filter(c => c !== body)), specs = [];
+      for (let i = 0; i < K; i++) specs.push({ cells: shapeCells(pick(rng, 1, ["square", "diamond", "plus"])[0], rng.int(3, 4)), color: body, skin: "core", accent: cores[i] });
+      specs[rng.int(0, K - 1)].accent = 2;   // exactly one red core = the target
+      const reds = specs.filter(o => o.accent === 2); for (let i = 1; i < reds.length; i++) reds[i].accent = pick(rng, 1, [3, 4, 6, 7])[0];
+      const P = placeRoster(rng, H, W, specs);
+      return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.filter(o => o.accent === 2)) }; } },
+
+  odd_skin_out: { prior: "object", steps: 2, rule: "all objects share the same internal pattern except one; recolour the odd one yellow", concept: ["subobject", "odd-one-out", "pattern"],
+    make(rng) { const K = rng.int(3, 4), H = rng.int(16, 20), W = rng.int(16, 20), body = pick(rng, 1, [1, 5, 8])[0], accent = pick(rng, 1, [3, 6, 7].filter(c => c !== body))[0];
+      const major = pick(rng, 1, ["core", "border", "cross"])[0]; let odd = pick(rng, 1, ["plain", "core", "border", "cross"])[0]; while (odd === major) odd = pick(rng, 1, ["plain", "core", "border", "cross"])[0];
+      const specs = []; for (let i = 0; i < K; i++) specs.push({ cells: shapeCells("square", rng.int(3, 4)), color: body, skin: major, accent, odd: false });
+      specs.push({ cells: shapeCells("square", rng.int(3, 4)), color: body, skin: odd, accent, odd: true });
+      const P = placeRoster(rng, H, W, specs);
+      return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.map(o => o.odd ? { ...o, skin: null, color: 4 } : o)) }; } },
 };
 
 function buildFamilyTask(famKey, rng, nEx) {

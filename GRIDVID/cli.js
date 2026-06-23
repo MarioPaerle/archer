@@ -712,6 +712,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       if (seen.has(hash)) { stats.duplicates++; continue; }
       seen.add(hash);
       task.meta.id = hash.slice(0, 12); task.meta.template = "llm:" + menu.functions.map(x => x.name).join("+"); task.meta.category = "llm"; task.meta.source = "llm";
+      task.meta.prompt = prompt;   // the DSL SUGGESTION the model received (so the gallery can show it — Mario: judge whether failures are the model's)
       accepted.push({ id: task.meta.id, task, template: task.meta.template, category: "llm" });
     }
     writeDataset(dir, accepted, shards, numNodes > 1 ? `node-${nodeRank}-` : "");

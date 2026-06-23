@@ -18,6 +18,7 @@ function card(t) {
       <div class=rl>${esc(t.meta.rule)}</div>
       <div class=meta>${verdict} · d${t.meta.difficulty != null ? t.meta.difficulty : "?"}${t.meta.prior ? ` · <span class=prior>${esc(t.meta.prior)}</span>` : ""} · ${t.width}×${t.height} · ${t.examples.length}ex</div>
       ${t.meta.dsl ? `<details><summary>DSL</summary><pre>${esc(t.meta.dsl.trim())}</pre></details>` : ""}
+      ${t.meta.prompt ? `<details><summary>DSL suggestion (the prompt the model received)</summary><pre>${esc(t.meta.prompt.trim())}</pre></details>` : ""}
     </figcaption></figure>`;
 }
 const html = `<!doctype html><meta charset=utf-8><title>${esc(title)}</title><style>
