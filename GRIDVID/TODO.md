@@ -27,6 +27,11 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-23) **Reconciliation mode-1 (RANK) — the pivot off free-authoring.** `reconcile.js` + `cli.js rank`: gen_hard makes
+      K=4 correct-by-construction variants of one family; the LLM picks the most human/legible. Output can't be incoherent/overlapping/
+      magic — every candidate is already correct; the LLM only adds taste. Validated on CINECA Qwen (N=24): all clean & coherent; Qwen
+      really chooses (added a variant-shuffle to debias position). **mode-2 FILL** ✅ (gen_count). **mode-3 PROPOSE** ⏳ needs the compose
+      layer (PAN-120). This is the standing answer: program-first = quality engine; LLM = taste via rank/fill/propose, never free-author.
 - [x] (2026-06-23) **Qwen quality fixes (Mario: "every Qwen task is broken").** Diagnosed + fixed the free-author path:
       (1) **k=1** (one rule, no composition) · **static-only** (no physics/video) · **no augmentation** — defaults for `generate-llm`
       (`--dynamic`/`--k` to opt back). (2) Engine **`spawn random` keeps a 1-cell gap** (Chebyshev) — objects never touch/merge.
