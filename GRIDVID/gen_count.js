@@ -102,7 +102,7 @@ function buildCountTask(a, rng, nEx = 3) {
     meta: { id, rule, concepts: ["counting", "cardinality", a.count_what], prior: "number", difficulty: 0.6, template: "count:" + a.count_what, source: "parameterized", assignment: a, n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } } };
 }
 
-module.exports = { SCHEMA, HUMAN, validAssignment, buildCountTask };
+module.exports = { SCHEMA, HUMAN, validAssignment, buildCountTask, makeInstance, layoutTallies, tallyCells, cropToContent };
 
 if (require.main === module) {   // demo: build the HUMAN assignment + a NAIVE one, write a comparison jsonl
   const fs = require("fs"); const rng = E.makeRng(7);

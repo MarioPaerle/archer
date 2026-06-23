@@ -30,6 +30,12 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [ ] More physics: pile-toppling/collapse, chain reactions, fluid + objects floating, magnets/charge fields.
 
 ## ✅ Done
+- [x] (2026-06-23) **PAN-158 — human-shaped task outputs.** Audited every gen_hard ANSWER-type family (the ones whose OUT is a small
+      answer, not a transformed scene) and made them human-shaped via `gen_count.js` machinery (`makeInstance`/`layoutTallies`/`cropToContent`,
+      now exported). Replaced non-human `count_to_bar` (horizontal bar in a big mostly-empty grid) with **`count_total` / `count_per_color` /
+      `count_per_kind`** — vertical · spaced · centred · colour-matched · cropped to a small grid (HUMAN assignment). `compare_more` now emits a
+      tight 3×3 block instead of a block in a full grid. Verified: count_to_color (1×1), plurality_color (3×3), sort_row_by_size (1×K) already
+      tight. Transform families (recolour-all etc.) keep full size — that's the legitimate human shape for a transformation. Gallery: `out/exp_human_counting.html`.
 - [x] (2026-06-23) **PAN-157 — corpus variety + foundational PHYSICS tier.** (a) `gen_hard.js` **10→21 program-first families**
       (+recolor_by_size_class, gravity_drop, count_to_color, quadrant_recolor, plurality_color, outline_shapes, connect_pairs,
       recolor_by_holes, sort_row_by_size, remove_noise, scale_to_majority_size) across all 4 priors — all baseline-hard (0 trivial / 220),

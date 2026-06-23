@@ -5,7 +5,7 @@
  * baseline-hard (a dumb 1-step solver fails). Emits prodigy-task JSON, each with a stable ID + difficulty.
  *   node gen_hard.js --n 40 -o out/hard.jsonl                                                              */
 const crypto = require("crypto");
-const E = require("./engine.js"), B = require("./baseline.js");
+const E = require("./engine.js"), B = require("./baseline.js"), C = require("./gen_count.js");
 
 const bbox = cells => { let h = 0, w = 0; for (const [r, c] of cells) { if (r + 1 > h) h = r + 1; if (c + 1 > w) w = c + 1; } return [h, w]; };
 const blank = (H, W) => Array.from({ length: H }, () => new Array(W).fill(0));
@@ -63,14 +63,13 @@ const FAMILIES = {
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: maj }))) }; } },
 
-  count_to_bar: { prior: "number", steps: 2, rule: "count the red shapes; the output is a horizontal bar of that many cells", concept: ["counting", "cardinality", "subitize"],
-    make(rng) { const H = rng.int(12, 16), W = rng.int(14, 18);
-      const nRed = rng.int(2, 6), nDist = rng.int(1, 3);
-      const specs = []; for (let i = 0; i < nRed; i++) specs.push({ cells: shapeCells(SOLID[rng.int(0, 4)], rng.int(2, 3)), color: 2 });
-      for (let i = 0; i < nDist; i++) specs.push({ cells: shapeCells(SOLID[rng.int(0, 4)], rng.int(2, 3)), color: [3, 4, 5, 6, 8][rng.int(0, 4)] });
-      const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
-      const out = blank(H, W); for (let c = 0; c < nRed; c++) out[0][c] = 2;   // bar of length = #red, top-left
-      return { in: IN, out }; } },
+  // HUMAN-SHAPED counting (PAN-158): vertical · spaced · centred · colour-matched · cropped to a small answer grid.
+  count_total: { prior: "number", steps: 2, rule: "count the shapes; show the total as a vertical, spaced, centred tally", concept: ["counting", "cardinality", "subitize"],
+    make: rng => C.makeInstance(rng, { count_what: "total", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
+  count_per_color: { prior: "number", steps: 2, rule: "count the shapes of each colour; show one vertical spaced tally per colour, colour-matched", concept: ["counting", "per-colour", "tally"],
+    make: rng => C.makeInstance(rng, { count_what: "per_color", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
+  count_per_kind: { prior: "number", steps: 2, rule: "count the shapes of each kind; show one vertical spaced tally per kind, colour-matched", concept: ["counting", "per-kind", "tally"],
+    make: rng => C.makeInstance(rng, { count_what: "per_kind", orient: "v", spacing: "spaced", place: "center", mark: "match" }) },
 
   compare_more: { prior: "number", steps: 2, rule: "output a single block in the colour that has MORE shapes (red vs blue)", concept: ["comparison", "most", "counting"],
     make(rng) { const H = rng.int(12, 16), W = rng.int(12, 16);
@@ -78,7 +77,7 @@ const FAMILIES = {
       const specs = []; for (let i = 0; i < nR; i++) specs.push({ cells: shapeCells(SOLID[rng.int(0, 4)], 2), color: 2 });
       for (let i = 0; i < nB; i++) specs.push({ cells: shapeCells(SOLID[rng.int(0, 4)], 2), color: 1 });
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P), win = nR > nB ? 2 : 1;
-      const out = blank(H, W); for (let r = 1; r <= 3; r++) for (let c = 1; c <= 3; c++) out[r][c] = win;
+      const out = blank(3, 3); for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out[r][c] = win;   // small human-shaped answer block (PAN-158)
       return { in: IN, out }; } },
 
   inside_outside: { prior: "topology", steps: 2, rule: "recolour the shapes INSIDE the frame green and the shapes OUTSIDE it red; the frame stays", concept: ["containment", "inside-outside", "topology"],
