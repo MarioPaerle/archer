@@ -335,6 +335,9 @@ function buildPrompt(registry, menu, opts = {}) {
     "• STATIC: IN and OUT are each a SINGLE grid. Build the input, 'hold 1' (IN), 'cut', apply the transform, 'snap 1' (OUT). NEVER use 'run', gravity, physics, or motion.",
     "• FEW objects (about 3–6). Place EVERY object with 'random' over a LARGE box (most of the grid) — NEVER fixed 'at R C' coordinates for multiple objects, and never tiny boxes — so they spread out and never overlap or touch. The engine keeps a gap only for 'random' placement; objects must never sit on top of one another.",
     "• NO 'vary' line and NO augmentation — augmentation interferes with the rule. (Per-example variety comes only from 'random' positions / 'color rand' / 'rand' sizes.)",
+    "• COLOURS: every colour in the OUTPUT must already appear in the INPUT. Do NOT invent a new answer/marker/overlap colour out of nowhere — recolour to a colour that is present in the scene, or put that colour in the input first.",
+    "• If you COPY/offset an object, use a FIXED offset (the SAME in every example, not based on the shape's size), and large enough that the copies never overlap each other or the original.",
+    "• Keep every shape FULLY inside the grid and clear of any border/frame — nothing clipped or tucked under an edge.",
     "• Vary every feature that is NOT the rule across examples (position, and colour/size unless they ARE the rule), so the model can't latch onto a constant.");
   if (opts.novelty) out.push("",   // a twist on the ONE rule, never extra mechanics
     "NOVELTY: don't copy the example — invent a DIFFERENT single rule (a fresh transform or a twist on this one). Keep it ONE coherent rule; novelty must NOT mean more mechanics or a busier scene.");
@@ -417,6 +420,14 @@ function staticizeTask(t) {
   t.in = last(t.in); t.out = last(t.out); t.fps = 1;
   return t;
 }
+// every nonzero colour in each OUT must already appear in that pair's IN — no invented "magic" colours (Mario).
+function outColorsGrounded(task) {
+  const last = v => v[v.length - 1], cset = g => { const s = new Set(); for (const r of g) for (const x of r) if (x) s.add(x); return s; };
+  const pairs = task.examples.map(e => [last(e.in), last(e.out)]).concat([[last(task.in), last(task.out)]]);
+  const magic = new Set();
+  for (const [i, o] of pairs) { const inC = cset(i); for (const x of cset(o)) if (!inC.has(x)) magic.add(x); }
+  return { ok: magic.size === 0, magic: [...magic] };
+}
 // the self-correcting loop for ONE task: call → verify → on reject, re-prompt with the reasons. Returns {task,...} or null.
 async function llmGenerateOne(prompt, callModel, opts = {}) {
   const retries = opts.retries == null ? 2 : opts.retries; let feedback = "", attempts = 0;
@@ -428,8 +439,11 @@ async function llmGenerateOne(prompt, callModel, opts = {}) {
     let task; try { task = E.buildTask(scene, { augment: false, ...(opts.examples ? { examples: opts.examples } : {}) }); }   // NO augmentation: a sampled vary axis interferes with the rule (Mario)
     catch (e) { feedback = "parse error: " + e.message.replace(/\n[\s\S]*/, ""); trail.push("parse"); continue; }
     const te = task.meta.teaching;
-    if (te.ok && te.coherent && te.examplesVary !== false) return { task, scene, attempts, trail };
-    feedback = rejectReasons(task); trail.push(feedback.split(":")[0]);
+    const grounded = outColorsGrounded(task);   // Mario: every OUT colour must already appear in the IN (no invented "magic" colours)
+    if (te.ok && te.coherent && te.examplesVary !== false && grounded.ok) return { task, scene, attempts, trail };
+    feedback = grounded.ok ? rejectReasons(task)
+      : "the OUT uses colour(s) " + grounded.magic.join(",") + " that appear NOWHERE in the IN. Every colour in the output must already be present in the input — recolour using a colour that is in the scene, or put that colour in the input. No invented answer/marker colours.";
+    trail.push(grounded.ok ? feedback.split(":")[0] : "magic-colour");
   }
   return null;
 }
