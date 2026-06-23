@@ -27,6 +27,7 @@ const Shape2D = require("./tokenizer/shape2d.js");
 const Baseline = require("./baseline.js");   // dumb 1-step solver → "too simple" detector (--hard filter)
 const GenHard = require("./gen_hard.js");     // program-first families (correct-by-construction) — the quality engine
 const Reconcile = require("./reconcile.js");  // reconciliation layer: the LLM picks/ranks correct variants (mode-1)
+const Seeded = require("./seeded.js");         // NVARC/BARC shape: seed the LLM from REAL ARC tasks + human descriptions
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -750,6 +751,41 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     writeDataset(dir, accepted, shards);
     console.log(`rank → ${dir}  (${accepted.length}/${n} tasks · K=${K} variants each · ${stats.ranked} LLM-ranked)`);
     console.log("  chosen-index distribution (taste signal; not all index 0 = the model is really choosing):", JSON.stringify(stats.chosen));
+    if (f.stub) console.log("  (stub — wire Qwen with --endpoint http://<vllm-host>:8000 --model <name>)");
+  },
+
+  // SEEDED generation (NVARC/BARC shape): the LLM is given a REAL ARC task + its human rule description and writes a
+  // GENERATOR (a reseed-varying DSL scene) teaching THAT rule. Grounded in the real distribution + human reasoning.
+  //   generate-seeded --n N (--endpoint URL [--model NAME] | --stub) [--retries R] [--all] [-o dir]
+  async "generate-seeded"(args) {
+    const f = flags(args);
+    const n = f.n || 20, dir = f.out || "out/seeded", shards = Math.max(1, f.shards || 1), retries = f.retries == null ? 2 : f.retries;
+    if (!f.stub && !f.endpoint) return console.error("generate-seeded: need --endpoint URL (OpenAI-compatible) or --stub");
+    const seeds = Seeded.loadSeeds({ exprOnly: !f.all });
+    if (!seeds.length) return console.error("generate-seeded: no seed descriptions in DATASET/descriptions/training");
+    console.log(`  ${seeds.length} real-task seed descriptions loaded (expressible_in_dsl != no${f.all ? "; --all → include 'no'" : ""})`);
+    const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), accepted = [], seen = new Set();
+    const stats = { attempts: 0, retried: 0, failed: 0, dups: 0 }, byPrior = {};
+    while (accepted.length < n && stats.attempts < n * 8) {
+      stats.attempts++;
+      const seed = seeds[rng.int(0, seeds.length - 1)], prompt = Seeded.buildSeededPrompt(seed, E.GRAMMAR);
+      let callModel;
+      if (f.stub) callModel = async () => "grid 12 12\nseed 1\nspawn square 2 random 1 1 9 9 color 2\nspawn square 2 random 1 1 9 9 color 3\nhold 1\ncut\nrecolor color 2 tint 3\nsnap 1";   // stub: a valid colour-grounded scene
+      else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model, max_tokens: f.maxtok ? +f.maxtok : undefined, temperature: f.temp != null ? +f.temp : undefined });
+      let r; try { r = await llmGenerateOne(prompt, callModel, { retries, examples: f.examples }); } catch (e) { stats.failed++; continue; }
+      if (!r) { stats.failed++; continue; }
+      if (r.attempts > 1) stats.retried++;
+      const task = staticizeTask(r.task);
+      const hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
+      if (seen.has(hash)) { stats.dups++; continue; } seen.add(hash);
+      task.meta.id = hash.slice(0, 12); task.meta.template = "seed:" + seed.id; task.meta.category = "seeded"; task.meta.source = "seeded";
+      task.meta.seed_id = seed.id; task.meta.seed_rule = seed.rule.replace(/\s+/g, " ").trim().slice(0, 220); task.meta.prompt = prompt;
+      (byPrior[seed.priors.split(/[,\n]/)[0] || "?"] = (byPrior[seed.priors.split(/[,\n]/)[0] || "?"] || 0) + 1);
+      accepted.push({ id: task.meta.id, task, template: task.meta.template, category: "seeded" });
+    }
+    writeDataset(dir, accepted, shards);
+    console.log(`generate-seeded → ${dir}`);
+    console.log(`  accepted ${accepted.length}/${n}  attempts ${stats.attempts}  self-corrected ${stats.retried}  failed ${stats.failed}  dups ${stats.dups}`);
     if (f.stub) console.log("  (stub — wire Qwen with --endpoint http://<vllm-host>:8000 --model <name>)");
   },
 
