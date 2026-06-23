@@ -328,11 +328,16 @@ function buildPrompt(registry, menu, opts = {}) {
     + ".  Boolean ones (convex, symmetric, connected, collinear, loop) use 'case yes' / 'case no'; categorical ones use the value directly"
     + " (orientation→wide|tall|square, symmetry→h|v|hv|rot|none, size_class→small|mid|big, parity→even|odd).");
   out.push("", "YOUR TASK:", menuToPrompt(menu),
-    "", "A VALID EXAMPLE SCENE (study the FORM, then write a DIFFERENT one that combines your blocks):", exText);
-  if (opts.static) out.push("",   // ARC-AGI-2 shape: clean grid→grid, no animation
-    "STATIC TASK: IN and OUT are each a SINGLE grid (a before/after snapshot), NOT an animation. Build the input, then 'hold 1' (IN), 'cut', apply the transform, 'snap 1' (OUT). Do NOT use 'run' or any physics/motion. The hidden rule must be a clean, instructive grid transformation an ARC-AGI-2 solver could infer.");
-  if (opts.novelty) out.push("",   // PAN-116: reward a genuine twist, not a copy
-    "NOVELTY: do NOT copy the example. Combine your building blocks in a NEW way and add ONE surprising twist to the rule or the OUT — while staying coherent (every example pair must teach the SAME rule, and OUT must differ from IN).");
+    "", "A VALID EXAMPLE SCENE (study the FORM, then write a DIFFERENT task with the same building block):", exText);
+  if (opts.static) out.push("",   // ARC-AGI-2 shape: clean grid→grid, no animation — and the hard coherence rules (Mario)
+    "HARD RULES — a good task is SIMPLE and CLEAR, not complex:",
+    "• ONE rule only. Exactly one clean, instructive grid transformation an ARC-AGI-2 solver could infer from the examples. Do NOT chain multiple mechanics into a rule-salad.",
+    "• STATIC: IN and OUT are each a SINGLE grid. Build the input, 'hold 1' (IN), 'cut', apply the transform, 'snap 1' (OUT). NEVER use 'run', gravity, physics, or motion.",
+    "• FEW objects (about 3–6), each spawned with 'random' so they are spread out and NEVER overlap or touch. Never place objects on top of each other.",
+    "• NO 'vary' line and NO augmentation — augmentation interferes with the rule. (Per-example variety comes only from 'random' positions / 'color rand' / 'rand' sizes.)",
+    "• Vary every feature that is NOT the rule across examples (position, and colour/size unless they ARE the rule), so the model can't latch onto a constant.");
+  if (opts.novelty) out.push("",   // a twist on the ONE rule, never extra mechanics
+    "NOVELTY: don't copy the example — invent a DIFFERENT single rule (a fresh transform or a twist on this one). Keep it ONE coherent rule; novelty must NOT mean more mechanics or a busier scene.");
   return out.join("\n");
 }
 
@@ -420,7 +425,7 @@ async function llmGenerateOne(prompt, callModel, opts = {}) {
     attempts++;
     const reply = await callModel(feedback ? prompt + "\n\nYOUR PREVIOUS SCENE WAS REJECTED — " + feedback + "\nFix exactly that and output the corrected scene only." : prompt);
     const scene = extractScene(reply);
-    let task; try { task = E.buildTask(scene, opts.examples ? { examples: opts.examples } : {}); }
+    let task; try { task = E.buildTask(scene, { augment: false, ...(opts.examples ? { examples: opts.examples } : {}) }); }   // NO augmentation: a sampled vary axis interferes with the rule (Mario)
     catch (e) { feedback = "parse error: " + e.message.replace(/\n[\s\S]*/, ""); trail.push("parse"); continue; }
     const te = task.meta.teaching;
     if (te.ok && te.coherent && te.examplesVary !== false) return { task, scene, attempts, trail };
@@ -666,7 +671,10 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const n = f.n || 20, dir = f.out || "out/llm-dataset", shards = Math.max(1, f.shards || 1);
     const templatesDir = f.templates || path.join(__dirname, "scenes", "library");
     const numNodes = Math.max(1, f.numNodes || 1), nodeRank = Math.max(0, Math.min(numNodes - 1, f.nodeRank || 0));
-    const seedBase = (f.seedBase || 1) + nodeRank * 1000000000, retries = f.retries == null ? 2 : f.retries, k = f.k || 3;
+    const seedBase = (f.seedBase || 1) + nodeRank * 1000000000, retries = f.retries == null ? 2 : f.retries;
+    // FIX (Mario 2026-06-23): free k=3 composition of dynamic templates with augmentation = incoherent overlapping rule-salad.
+    // Defaults now: k=1 (ONE clear rule, no composition) · STATIC only (no physics/video) · NO augmentation. Opt back in with --k/--dynamic.
+    const k = f.k || 1, useStatic = f.dynamic ? false : (f.static !== false);
     if (!f.stub && !f.endpoint) return console.error("generate-llm: need --endpoint URL (OpenAI-compatible, e.g. a vLLM-served Qwen) or --stub");
     let registry; try { registry = buildFunctionRegistry(templatesDir, 1); } catch (e) { return console.error("generate-llm: " + e.message); }
     if (numNodes > 1) console.log(`  [multinode] node ${nodeRank + 1}/${numNodes}  seed-slice base ${seedBase}`);
@@ -674,8 +682,8 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const stats = { attempts: 0, retried: 0, failed: 0, duplicates: 0 }, cap = f.maxAttempts || n * 8; let i = 0;
     while (accepted.length < n && stats.attempts < cap) {
       stats.attempts++;
-      const menu = proposeMenu(rng, registry, { k, static: f.static });
-      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: f.static });
+      const menu = proposeMenu(rng, registry, { k, static: useStatic });
+      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: useStatic });
       let callModel;
       if (f.stub) { const ex = registry.find(r => r.name === menu.functions[0].name), exText = fs.readFileSync(path.join(templatesDir, ex.file), "utf8").trim(), sd = seedBase + (i++); callModel = async () => "seed " + sd + "\n" + exText; }
       else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model });
@@ -683,7 +691,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       catch (e) { stats.failed++; continue; }
       if (!r) { stats.failed++; continue; }
       if (r.attempts > 1) stats.retried++;
-      const task = f.static ? staticizeTask(r.task) : r.task;
+      const task = useStatic ? staticizeTask(r.task) : r.task;
       const hash = crypto.createHash("sha1").update(JSON.stringify([task.examples.map(e => [e.in, e.out]), task.in, task.out])).digest("hex");
       if (seen.has(hash)) { stats.duplicates++; continue; }
       seen.add(hash);

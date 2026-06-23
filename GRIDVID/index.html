@@ -1702,12 +1702,15 @@ a.dl{display:none}
             if (kv.random) {
               const [bh, bw] = bbox(cells), box = kv.randBox || [0, 0, world.h - 1, world.w - 1];
               const r0 = Math.min(box[0], box[2]), r1 = Math.max(box[0], box[2]), c0 = Math.min(box[1], box[3]), c1 = Math.max(box[1], box[3]);
-              // non-overlapping placement: a hidden object under another makes IN→OUT visually unsolvable.
+              // GAP-enforced placement: objects keep >=1 empty cell from each other (Chebyshev) so boundaries are always
+              // clear and two objects never touch/merge (a hidden or adjacent object makes IN→OUT unreadable).
               const occ = new Set(); for (const ob of world.bodies) for (const [dr, dc] of ob.cells) occ.add((ob.r + dr) + "," + (ob.c + dc));
               const tryAt = () => [world.rng.int(r0, Math.max(r0, r1 - bh + 1)), world.rng.int(c0, Math.max(c0, c1 - bw + 1))];
+              const clear = (rr, cc, gap) => !cells.some(([dr, dc]) => { for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) if (occ.has((rr + dr + a) + "," + (cc + dc + b))) return true; return false; });
               let rr, cc, ok = false;
-              for (let tries = 0; tries < 80 && !ok; tries++) { [rr, cc] = tryAt(); ok = !cells.some(([dr, dc]) => occ.has((rr + dr) + "," + (cc + dc))); }
-              kv.r = rr; kv.c = cc;   // best effort: last try if none clash-free (rare in a roomy box)
+              for (let tries = 0; tries < 140 && !ok; tries++) { [rr, cc] = tryAt(); ok = clear(rr, cc, 1); }                 // prefer a 1-cell gap
+              for (let tries = 0; tries < 60 && !ok; tries++) { [rr, cc] = tryAt(); ok = clear(rr, cc, 0); }                  // fall back to merely non-overlapping
+              kv.r = rr; kv.c = cc;   // best effort: last try if even that fails (rare in a roomy box)
             }
             world.bodies.push(makeBody({ cells, r: kv.r, c: kv.c, color: col == null ? 1 : col, vr: kv.vr, vc: kv.vc, gravity: kv.grav, bounce: kv.bounce, fill: kv.fill, interior: kv.interior, spin: kv.spin, layer: kv.layer, ghost: kv.ghost, magnet: kv.magnet, link: kv.link, id: kv.id, target: kv.target, kind: sh.name, srcLine: ln }));
           }
