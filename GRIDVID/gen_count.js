@@ -13,6 +13,7 @@
  */
 const crypto = require("crypto");
 const E = require("./engine.js");
+const SK = require("./skins.js");   // counters are skinnable too (Mario)
 
 const blank = (H, W) => Array.from({ length: H }, () => new Array(W).fill(0));
 const bbox = cells => { let h = 0, w = 0; for (const [r, c] of cells) { if (r + 1 > h) h = r + 1; if (c + 1 > w) w = c + 1; } return [h, w]; };
@@ -82,7 +83,7 @@ function cropToContent(g, margin = 1) {
   r0 = Math.max(0, r0 - margin); c0 = Math.max(0, c0 - margin); r1 = Math.min(g.length - 1, r1 + margin); c1 = Math.min(g[0].length - 1, c1 + margin);
   const o = []; for (let r = r0; r <= r1; r++) { const row = []; for (let c = c0; c <= c1; c++) row.push(g[r][c]); o.push(row); } return o;
 }
-const KINDS = ["square", "disc", "plus", "Lshape", "triangle"];
+const KINDS = ["square", "disc", "plus", "Lshape", "triangle", "diamond", "Tshape", "notch", "bump"];   // broad shape vocab (not just square/disc)
 function makeInstance(rng, a) {
   const H = rng.int(15, 20), W = rng.int(15, 20);
   // a roster with a few colours and kinds, counts kept in the subitizing range
@@ -90,9 +91,11 @@ function makeInstance(rng, a) {
   const kinds = shuffle(rng, KINDS).slice(0, rng.int(2, 3));
   const specs = [], counts = {};
   const N = rng.int(4, 7);
-  for (let i = 0; i < N; i++) { const col = palette[rng.int(0, palette.length - 1)], kind = kinds[rng.int(0, kinds.length - 1)]; specs.push({ cells: shapeCells(kind, rng.int(2, 3)), color: col, kind }); }
+  // count-by-colour/kind ⇒ keep the body colour dominant (small accent only); total ⇒ any skin. Plain stays common.
+  const keepColor = a.count_what !== "total";
+  for (let i = 0; i < N; i++) { const col = palette[rng.int(0, palette.length - 1)], kind = kinds[rng.int(0, kinds.length - 1)], sk = SK.pickSkin(rng, col, keepColor); specs.push({ cells: shapeCells(kind, rng.int(3, 4)), color: col, kind, skin: sk.skin, accent: sk.accent }); }
   const placed = placeRoster(rng, H, W, specs);
-  const IN = blank(H, W); for (const o of placed) stamp(IN, o.cells, o.r, o.c, o.color);
+  const IN = blank(H, W); for (const o of placed) SK.stampSkinned(IN, o.cells, o.r, o.c, o.color, o.skin, o.accent);
   // tallies per count_what
   let tallies;
   const fixed = 5;

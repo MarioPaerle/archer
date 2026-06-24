@@ -21,24 +21,8 @@ const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s])
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
 const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
 
-// ---- SHAPE vocab + SKINS (Mario: more than square/circle; objects not all plain; sub-object presence). ----
-const SHAPES_ALL = ["square", "disc", "plus", "Lshape", "triangle", "diamond", "Tshape", "rect", "notch", "bump"];   // broad shape vocab
-const SKINS = ["plain", "plain", "plain", "core", "border", "cross", "stripe"];              // plain weighted (MUST stay; easiest, teaches a lot)
-// paint baseCells with internal structure → [[dr,dc,col],...]. accent = the sub-object colour; col 0 = a hole (left bg).
-function skinnedCells(baseCells, skin, color, accent) {
-  const [h, w] = bbox(baseCells), set = new Set(baseCells.map(([r, c]) => r + "," + c));
-  const interior = (r, c) => [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dr, dc]) => set.has((r + dr) + "," + (c + dc)));
-  const cr = Math.round((h - 1) / 2), cc = Math.round((w - 1) / 2);
-  return baseCells.map(([r, c]) => {
-    let col = color;
-    if (skin === "core") { if (r === cr && c === cc) col = accent; }                 // central sub-object cell
-    else if (skin === "border") { if (interior(r, c)) col = accent; }               // outline = colour, inside = accent
-    else if (skin === "cross") { if (r === cr || c === cc) col = accent; }          // a plus of accent through the centre
-    else if (skin === "stripe") { if (r % 2 === 0) col = accent; }                  // alternating rows = accent
-    else if (skin === "hole") { if (r === cr && c === cc) col = 0; }                // a punched hole at the centre
-    return [r, c, col];
-  });
-}
+// ---- SHAPE vocab + SKINS — shared module so gen_hard AND gen_count skin the same way (Mario: skinnable everywhere). ----
+const { SHAPES_ALL, SKINS, skinnedCells, pickSkin } = require("./skins.js");
 // render objects honouring per-object skins (multi-colour / sub-objects). objs: {cells,r,c,color[,skin,accent]}.
 const renderSkinned = (H, W, objs) => { const g = blank(H, W); for (const o of objs) { const cells = o.skin ? skinnedCells(o.cells, o.skin, o.color, o.accent) : o.cells.map(([r, c]) => [r, c, o.color]); for (const [dr, dc, col] of cells) { const rr = o.r + dr, ccc = o.c + dc; if (col && rr >= 0 && ccc >= 0 && rr < H && ccc < W) g[rr][ccc] = col; } } return g; };
 const flipVcells = cells => { const [h] = bbox(cells); return cells.map(([r, c]) => [h - 1 - r, c]); };
