@@ -16,6 +16,11 @@ const pick = (rng, k, pool) => shuffle(rng, pool).slice(0, k);
 const rectCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) o.push([r, c]); return o; };
 const lineCells = (n, vert) => { const o = []; for (let i = 0; i < n; i++) o.push(vert ? [i, 0] : [0, i]); return o; };
 const size = o => o.cells.length;
+// "largest"/"smallest" rules are only well-posed if the extreme is STRICTLY unique (Mario: no two equally-sized objects).
+const strictMax = P => { const a = P.map(size).sort((x, y) => y - x); return a.length < 2 || a[0] > a[1]; };
+const strictMin = P => { const a = P.map(size).sort((x, y) => x - y); return a.length < 2 || a[0] < a[1]; };
+// grow the current-largest (in its own kind) until the max area is STRICTLY unique — avoids dropping on cross-kind ties.
+function growUniqueMax(specs) { let g = 0; while (!strictMax(specs) && g++ < 16) { const top = specs.slice().sort((a, b) => size(b) - size(a))[0]; top.side = (top.side || 3) + 1; top.cells = shapeCells(top.kind, top.side); } return strictMax(specs); }
 const SOLID = ["square", "disc", "plus", "Lshape", "triangle"], HOLED = ["frame", "ring"];
 const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s]) : E.buildShape(kind, [s]);
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
@@ -87,12 +92,16 @@ const FAMILIES = {
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: RANKPAL[ranked.indexOf(o)] }))) }; } },
 
   holed_take_largest: { prior: "object/topology", steps: 2, rule: "every shape with a hole is recoloured to the colour of the single largest shape; the shapes without a hole are removed", concept: ["hole", "largest", "relational", "dispatch"],
-    make(rng) { const H = rng.int(17, 21), W = rng.int(17, 21);
-      const kinds = shuffle(rng, [HOLED[rng.int(0, 1)], HOLED[rng.int(0, 1)], SOLID[rng.int(0, 4)], SOLID[rng.int(0, 4)]]);
-      const cols = pick(rng, 4, [2, 3, 4, 5, 6, 7, 8]);
-      const specs = kinds.map((k, i) => ({ cells: shapeCells(k, rng.int(3, 5)), color: cols[i], holed: HOLED.includes(k) }));
-      if (!specs.some(s => s.holed)) specs[0] = { cells: shapeCells("frame", 4), color: cols[0], holed: true };
-      if (!specs.some(s => !s.holed)) specs[1] = { cells: shapeCells("square", 3), color: cols[1], holed: false };
+    make(rng) { const H = rng.int(18, 22), W = rng.int(18, 22);
+      // UNIQUE-largest by construction: holed = frames of DISTINCT sides 4/5 (areas 12/16); solid distractors = small
+      // squares ≤3 (areas ≤9) → the biggest frame is always strictly the largest shape. (No ties → well-posed.)
+      const cols = pick(rng, 4, [2, 3, 4, 5, 6, 7, 8]), fSides = pick(rng, 2, [4, 5]);
+      const specs = [
+        { cells: shapeCells("frame", fSides[0]), color: cols[0], holed: true },
+        { cells: shapeCells("frame", fSides[1]), color: cols[1], holed: true },
+        { cells: shapeCells("square", rng.int(2, 3)), color: cols[2], holed: false },
+        { cells: shapeCells("square", rng.int(2, 3)), color: cols[3], holed: false },
+      ];
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P), largest = P.slice().sort((a, b) => size(b) - size(a))[0];
       return { in: IN, out: render(H, W, P.filter(o => o.holed).map(o => ({ ...o, color: largest.color }))) }; } },
 
@@ -148,9 +157,9 @@ const FAMILIES = {
       return { in: IN, out: render(H, W, out) }; } },
 
   largest_to_marker: { prior: "object", steps: 2, rule: "find the single largest shape and recolour ONLY it to magenta; every other shape is unchanged", concept: ["largest", "selection", "relational"],
-    make(rng) { const K = rng.int(3, 5), H = rng.int(16, 20), W = rng.int(16, 20);
-      const sizes = pick(rng, K, [2, 3, 4, 5, 6]), cols = pick(rng, K, [3, 4, 1, 8, 6].filter(c => c !== 7));
-      const specs = sizes.map((s, i) => ({ cells: shapeCells(["square", "disc", "plus"][rng.int(0, 2)], s), color: cols[i] }));
+    make(rng) { const K = rng.int(3, 4), H = rng.int(19, 23), W = rng.int(19, 23);
+      const sizes = pick(rng, K, [2, 3, 4, 5]), cols = pick(rng, K, [3, 4, 1, 8, 6].filter(c => c !== 7)), kind = pick(rng, 1, ["square", "plus", "diamond"])[0];   // no disc (its footprint is huge → crowds)
+      const specs = sizes.map((s, i) => ({ cells: shapeCells(kind, s), color: cols[i] }));   // ONE kind + DISTINCT sizes → area is monotonic → the largest is strictly UNIQUE (Mario)
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P), big = P.slice().sort((a, b) => size(b) - size(a))[0];
       return { in: IN, out: render(H, W, P.map(o => o === big ? { ...o, color: 7 } : o)) }; } },
 
@@ -325,10 +334,12 @@ const FAMILIES = {
       return { in: render(H, W, P.map(o => ({ ...o, cells: o.shape }))), out: render(H, W, P.map(o => ({ ...o, cells: o.other }))) }; } },
 
   replicant: { prior: "object", steps: 2, rule: "each object is transformed by a function fixed by its colour (one colour's shapes mirror left-right, another's flip top-bottom)", concept: ["replicant", "per-colour-function", "dispatch", "analogy"],
-    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), cols = pick(rng, 2, [2, 3, 4, 6, 8]), K = rng.int(3, 5), kinds = ["Lshape", "Tshape", "triangle", "notch"];
+    make(rng) { const H = rng.int(15, 19), W = rng.int(15, 19), cols = pick(rng, 2, [2, 3, 4, 6, 8]), K = rng.int(3, 5), kinds = ["Lshape", "triangle", "notch"];   // asymmetric only (a T flipped left-right is invisible → undoable)
       const tf = shuffle(rng, [c => flipHcells(c), c => flipVcells(c), c => flipHcells(flipVcells(c))]).slice(0, 2), fn = { [cols[0]]: tf[0], [cols[1]]: tf[1] };
-      const specs = []; for (let i = 0; i < K; i++) { const sh = shapeCells(kinds[rng.int(0, 3)], rng.int(3, 4)), [bh, bw] = bbox(sh); specs.push({ cells: rectCells(bh, bw), shape: sh, color: cols[rng.int(0, 1)] }); }
+      const specs = []; for (let i = 0; i < K; i++) { const sh = shapeCells(kinds[rng.int(0, 2)], rng.int(3, 4)), [bh, bw] = bbox(sh); specs.push({ cells: rectCells(bh, bw), shape: sh, color: cols[rng.int(0, 1)] }); }
       if (!specs.some(o => o.color === cols[0])) specs[0].color = cols[0]; if (!specs.some(o => o.color === cols[1])) specs[1].color = cols[1];
+      const ckey = c => c.map(([r, x]) => r + "," + x).sort().join(";");
+      for (const o of specs) if (ckey(o.shape) === ckey(fn[o.color](o.shape))) throw new Error("replicant: invisible transform (undoable)");   // every transform MUST visibly change the shape
       const P = placeRoster(rng, H, W, specs);   // reserve the full bbox → the per-colour flip keeps the gap
       return { in: render(H, W, P.map(o => ({ ...o, cells: o.shape }))), out: render(H, W, P.map(o => ({ ...o, cells: fn[o.color](o.shape) }))) }; } },
 
@@ -371,6 +382,15 @@ const FAMILIES = {
       for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) if (M[r][c]) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if (M[a][b]) it2[r * 3 + a][c * 3 + b] = color;   // each filled cell → the whole motif
       const colorize = g => g.map(row => row.map(x => x ? color : 0));
       return { in: colorize(M), out: it2 }; } },   // IN 3×3 motif → OUT 9×9 motif-of-motif (continue the fractal)
+
+  // ---- 2026-06-24 (Mario): COMPOSITIONAL physics — remove the support, the structure above collapses. ----
+  collapse_support: { prior: "object/physics", steps: 3, rule: "the grey support is removed and every object that was resting on it falls straight down to the floor", concept: ["composition", "support", "gravity", "removal", "causality"],
+    make(rng) { const H = rng.int(13, 17), W = rng.int(15, 19), sR = rng.int(Math.floor(H / 2), H - 4);
+      const support = { cells: lineCells(W - 2, false), r: sR, c: 1, color: 5 }, K = rng.int(2, 3), bandW = Math.floor((W - 2) / K), cols = pick(rng, K, [2, 3, 4, 6, 8]), objs = [];
+      for (let i = 0; i < K; i++) { const cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "triangle", "diamond"])[0], rng.int(2, 3)), [bh, bw] = bbox(cells);
+        const c = 1 + i * bandW + rng.int(0, Math.max(0, bandW - bw - 1)), r = sR - bh; objs.push({ cells, color: cols[i], r, c, bh }); }   // resting ON the support
+      const IN = render(H, W, [support, ...objs]);
+      return { in: IN, out: render(H, W, objs.map(o => ({ ...o, r: H - o.bh }))) }; } },   // support gone → all fall to the floor
 };
 
 function buildFamilyTask(famKey, rng, nEx) {
