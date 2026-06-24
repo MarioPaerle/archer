@@ -352,6 +352,25 @@ const FAMILIES = {
       specs.push({ cells: shapeCells("square", s), color: body, skin: odd, accent, odd: true });
       const P = placeRoster(rng, H, W, specs);
       return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.map(o => o.odd ? { ...o, skin: null, color: 4 } : o)) }; } },
+
+  // ---- 2026-06-24 (Mario): FRACTAL continuation — self-similar growth (pseudo-natural motifs). ----
+  fractal_continue: { prior: "geometry", steps: 2, rule: "the output is the input with every coloured cell replaced by a copy of the whole input (one fractal/self-similar step)", concept: ["fractal", "self-similarity", "recursion", "continuation", "pattern"],
+    make(rng) {
+      const MOTIFS = [
+        [[0, 1, 0], [1, 1, 1], [0, 1, 0]],   // plus
+        [[1, 0, 1], [0, 1, 0], [1, 0, 1]],   // X
+        [[1, 1, 1], [1, 0, 1], [1, 1, 1]],   // ring → Sierpinski-carpet
+        [[1, 0, 0], [1, 1, 0], [1, 1, 1]],   // triangle
+        [[1, 1, 0], [0, 1, 1], [0, 0, 1]],   // diagonal stair
+        [[1, 1, 1], [0, 1, 0], [0, 1, 0]],   // T
+        [[1, 0, 1], [1, 1, 1], [1, 0, 1]],   // H
+        [[0, 1, 0], [1, 1, 1], [1, 0, 1]],   // sprout (pseudo-natural)
+      ];
+      const M = MOTIFS[rng.int(0, MOTIFS.length - 1)], color = pick(rng, 1, [2, 3, 4, 6, 8])[0];
+      const it2 = blank(9, 9);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) if (M[r][c]) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if (M[a][b]) it2[r * 3 + a][c * 3 + b] = color;   // each filled cell → the whole motif
+      const colorize = g => g.map(row => row.map(x => x ? color : 0));
+      return { in: colorize(M), out: it2 }; } },   // IN 3×3 motif → OUT 9×9 motif-of-motif (continue the fractal)
 };
 
 function buildFamilyTask(famKey, rng, nEx) {

@@ -28,6 +28,7 @@ const Baseline = require("./baseline.js");   // dumb 1-step solver → "too simp
 const GenHard = require("./gen_hard.js");     // program-first families (correct-by-construction) — the quality engine
 const Reconcile = require("./reconcile.js");  // reconciliation layer: the LLM picks/ranks correct variants (mode-1)
 const Seeded = require("./seeded.js");         // NVARC/BARC shape: seed the LLM from REAL ARC tasks + human descriptions
+const CorpusIndex = require("./corpus_index.js"); // hierarchical DB → hand the agent RELATED exemplars (same priors)
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -764,11 +765,14 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const seeds = Seeded.loadSeeds({ exprOnly: !f.all });
     if (!seeds.length) return console.error("generate-seeded: no seed descriptions in DATASET/descriptions/training");
     console.log(`  ${seeds.length} real-task seed descriptions loaded (expressible_in_dsl != no${f.all ? "; --all → include 'no'" : ""})`);
+    const idx = CorpusIndex.buildIndex();   // hierarchical DB of our correct families, to pull RELATED exemplars per seed
     const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), accepted = [], seen = new Set();
     const stats = { attempts: 0, retried: 0, failed: 0, dups: 0 }, byPrior = {};
     while (accepted.length < n && stats.attempts < n * 8) {
       stats.attempts++;
-      const seed = seeds[rng.int(0, seeds.length - 1)], prompt = Seeded.buildSeededPrompt(seed, E.GRAMMAR);
+      const seed = seeds[rng.int(0, seeds.length - 1)];
+      const exemplars = CorpusIndex.relatedExemplars(idx, { priors: seed.priorsList, concepts: seed.priorsList }, 2, rng);   // match the seed's ARC priors against both family prior + concept tags
+      const prompt = Seeded.buildSeededPrompt(seed, E.GRAMMAR, exemplars);
       let callModel;
       if (f.stub) callModel = async () => "grid 12 12\nseed 1\nspawn square 2 random 1 1 9 9 color 2\nspawn square 2 random 1 1 9 9 color 3\nhold 1\ncut\nrecolor color 2 tint 3\nsnap 1";   // stub: a valid colour-grounded scene
       else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model, max_tokens: f.maxtok ? +f.maxtok : undefined, temperature: f.temp != null ? +f.temp : undefined });
@@ -780,7 +784,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       if (seen.has(hash)) { stats.dups++; continue; } seen.add(hash);
       task.meta.id = hash.slice(0, 12); task.meta.template = "seed:" + seed.id; task.meta.category = "seeded"; task.meta.source = "seeded";
       task.meta.seed_id = seed.id; task.meta.seed_rule = seed.rule.replace(/\s+/g, " ").trim().slice(0, 220); task.meta.prompt = prompt;
-      (byPrior[seed.priors.split(/[,\n]/)[0] || "?"] = (byPrior[seed.priors.split(/[,\n]/)[0] || "?"] || 0) + 1);
+      { const pk = seed.priorsList[0] || "?"; byPrior[pk] = (byPrior[pk] || 0) + 1; }
       accepted.push({ id: task.meta.id, task, template: task.meta.template, category: "seeded" });
     }
     writeDataset(dir, accepted, shards);
