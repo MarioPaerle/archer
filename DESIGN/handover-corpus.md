@@ -1,7 +1,51 @@
 ---
 title: "HANDOVER — the corpus / data-generation frontier (archer)"
-updated: 2026-06-23
+updated: 2026-06-24
 for: the next agent working on archer's synthetic ARC-AGI-2 pretraining corpus
+---
+
+# HANDOVER 2026-06-24 — read THIS section first (then the 2026-06-23 one below for deeper history)
+
+> Read order: (1) this section, (2) `DESIGN/llm-data-generation-study.md` (strategy/6-stage pipeline), (3) `GRIDVID/HANDOVER.md` (engine/DSL contract), (4) `LINEAR.md`. `archer` (github.com/MarioPaerle/archer) is canonical — **commit + push to origin/main at every step, Mario-only, no co-author; `cd GRIDVID && node cli.js self-test` MUST be green before push** (`ARCHER.md`). Chat with Mario in Italian; code/KB English.
+
+## THE BIG PICTURE (where we are + the one decisive insight)
+Goal: pretrain a from-scratch grid world-model on millions of ARC-style tasks teaching human core-knowledge priors → beat NVARC (24% @ $0.20/task). Mario's verdict on the current corpus: **"we're at ARC-AGI 1.5 level"** — good but not AGI-2-hard; needs **more compositionality + richer objects**.
+
+**The decisive finding (read the NVARC writeup `SOURCES/06/2025-11-nvarc-...md`):** NVARC's generation wins because the LLM is **seeded from REAL ARC tasks + human solution descriptions** and writes a **GENERATOR program** (→ ~30 instances, execution+consistency filtered), with strong models offline. We had a small model writing single DSL scenes from our INVENTED priors (out-of-distribution → low diversity / incoherence). **PIVOT (shipped, not yet validated): `GRIDVID/seeded.js` + `cli.js generate-seeded`** — feed Qwen a REAL ARC task's grids + its human rule (from `DATASET/descriptions/training/*.md`, 245 of them) + the full grammar + RELATED correct exemplars → it writes a reseed-varying generator for THAT rule. Also IQ rule-types in `DATASET/descriptions/iq/` (6, no grids → agent invents). **This is the most important next thing to VALIDATE on CINECA.**
+
+## CODE MAP (all in `GRIDVID/`)
+- **`gen_hard.js`** — 34 program-first families (correct-by-construction, baseline-hard, gap-placed, skinned). The quality engine. Add a family = a `make(rng)→{in,out}`, eyeball once.
+- **`gen_physics.js`** — 12 short-video physics templates (gravity/pile/bounce/shatter/orbit/spin/spill-fluid/explode/magnet_dock/maze_video/beam_video). `--augment` off by default.
+- **`gen_count.js`** — parameterized human-shaped counting (skinned counters); exports `placeRoster`/`makeInstance`/`cropToContent`.
+- **`skins.js`** — shared SKIN system (plain-weighted + core/border/cross/stripe; `stampSkinned`/`pickSkin`). Used by gen_hard + gen_count.
+- **`corpus_index.js`** — hierarchical DB (prior→concept→families) + `relatedExemplars()` → hand the agent RELATED correct examples.
+- **`seeded.js`** — the NVARC pivot (above). **`reconcile.js`** — mode-1 RANK (LLM picks the most human of K correct variants; output can't be incoherent). **`baseline.js`** — dumb 1-step solver = the "too simple" filter.
+- **`cli.js`** commands: `generate-llm` (free-author, defaults k=1/static/no-aug/colour-grounded), `generate-seeded` (the pivot), `rank` (reconcile mode-1), `generate-dataset` (template sampler), `self-test`, `dsl`.
+
+## STANDING DESIGN RULES (Mario, hard-won — do not regress)
+1. **Clear boundaries**: objects never touch/merge (esp. same colour). `placeRoster` + engine `spawn random` keep a ≥1-cell gap. Transforms that move cells (mirror/scale) reserve the full bbox footprint.
+2. **Derivable answers only**: every OUT colour must already appear in the IN (LLM path: `outColorsGrounded` guard); no arbitrary colour encodings (killed count_to_color/count_per_kind).
+3. **Human-shaped outputs**: answer grids are small/cropped (counting = vertical/spaced/centred tallies).
+4. **`largest`/`smallest` must be STRICTLY unique** (no size ties) — by construction.
+5. **No undoable tasks**: every transform must be visibly inferable (e.g. replicant uses asymmetric shapes only).
+6. **Objects not all plain**: skins + broad shape vocab; but plain stays common (easiest, teaches most).
+7. **Eyeball every new/changed family** (render GIF → `sips` to PNG → Read). The cheap guards catch structure, not visual breakage.
+8. **Qwen free-authoring has a ceiling** (overlap/magic-colour/rule-salad). The answer is reconciliation (rank/fill/propose) + seeded-from-real. Program-first = quality engine; LLM = taste/humanity, not free author.
+
+## QWEN / CINECA (experiments done 2026-06-24)
+- temp 0.9→**0.6** + top_p 0.9 (`callModelHTTP`): cleaner, but Qwen Instruct converges on ~6 safe rules (low diversity).
+- **Qwen3-30B-A3B-Thinking** tested: ~30× slower (28min/12), 85% fail, BUT survivors more creative → use it as a **rule-TYPE miner** (mine novel rules → templatize program-first), not a bulk generator.
+- **Coder models** (Qwen3-Coder-30B-A3B) = best free-author bet (eval only, not downloaded). Decision: **hybrid — DSL now, sandboxed Python later** (PAN-166); keep **Qwen**, swap to **Qwen3.6-35B-A3B** (PAN-165).
+- **CINECA run loop:** `ssh leonardo` (smallstep auth re-login ~12h, expires mid-long-session); `sbatch arc-archer-ops/debug_qwen.sbatch` (or `debug_thinking.sbatch`; 2×A100, ~8 min to load, node:8000, qos debug 30 min); drive `node GRIDVID/cli.js generate-seeded|generate-llm|rank --endpoint http://<node>:8000 --model qwen`; pull `$SCRATCH/archer-datasets/...`; **ALWAYS `scancel` after** (GPU discipline). Both 30B models = 57G each in `$SCRATCH/models` (scratch/large; work + scratch/fast are FULL).
+- ⚠️ **DEPLOY NOTE:** `DATASET/` is gitignored (KB, not in archer) → `seeded.js` reads `DATASET/descriptions/` which is NOT on the CINECA clone. **Before `generate-seeded` on CINECA you must `rsync`/`scp` `DATASET/descriptions/` to the clone.** ⚠️ **CINECA was DOWN at handover** → seeded validation + Qwen3.6 swap are BLOCKED, queued.
+
+## OPEN BACKLOG (Linear)
+- **PAN-164** ⭐ Seeded generation (NVARC shape) — `seeded.js`/`generate-seeded` shipped; **VALIDATE on Qwen when CINECA returns** (sync DATASET first). Then: skill-mix (combine two real rules), consistency filter, grow descriptions 245→1000.
+- **PAN-165** swap model → Qwen3.6-35B-A3B (CINECA down; confirm HF repo id, download to scratch/large, point debug_qwen.sbatch MODEL).
+- **PAN-166** easier/Python-like DSL. **PAN-167** IQ-puzzle descriptions → seed (6 authored; add more).
+- From the v5/v5.5 review (still open under PAN-157): MORE compositional physics (chain reactions, remove-one-others-react — I added `collapse_support`), MORE shapes/colours/skins breadth, program-first IQ-style families (analogy A:B::C:?, series, matrix).
+- Galleries delivered (local, `out/*.html`): `showcase_v5_5.html` (latest, grouped by prior + physics last-frames incl. fluid), `dsl_suggestion.html` (the prompt Qwen receives), `qwen_v2.html` / `qwen_thinking.html` / `rank_mode1.html`.
+
 ---
 
 # HANDOVER — archer corpus frontier (2026-06-23)
