@@ -7,6 +7,13 @@ Running list. Newest priorities on top. Done items move to the bottom.
 > Generation backlog currently: PAN-114/123 (sampler+throughput) · PAN-119/120 (combinators+auto-compose) ·
 > PAN-121/122 (prompt-kit + retry loop) · PAN-115/116 (IQ priors + Qwen novelty) · PAN-124 (semantic guard) · PAN-117 (objectives).
 
+## 🔜 Open — Mario backlog 2026-06-24 (CINECA down → model items blocked)
+- [ ] **PAN-164 Seeded generation (NVARC/BARC shape)** — `seeded.js` + `generate-seeded` SHIPPED (LLM writes a DSL generator from a REAL
+      ARC task + its human description in `DATASET/descriptions/`). **Validate on Qwen when CINECA returns.** Next: skill-mix, consistency filter, grow descriptions 245→1000.
+- [ ] **PAN-165 Swap model → Qwen3.6-35B-A3B** (CINECA down): confirm HF repo id, download to scratch/large, point debug_qwen.sbatch MODEL, re-run generate-seeded.
+- [ ] **PAN-167 IQ-puzzle descriptions → seed** — author IQ-rule descriptions (Raven/analogy/series/odd/fold) in the DATASET/descriptions format, feed via generate-seeded. Start: `DESIGN/iq-tests-to-dsl.md`.
+- [ ] **PAN-166 Easier DSL for agents** (toward Python-like / sandboxed Python = the 'later' half of the hybrid decision).
+
 ## 🔜 Open — larger tracked efforts (each is its own multi-session piece, NOT quick wins; on Linear)
 - [ ] **Engine `shape NAME pattern P|P|P` custom-object def** (`def A … / spawn A`, Mario) — define an arbitrary object/SKIN
       with an internal colour pattern (multi-cell, multi-colour) and spawn it as one unit. Plus a **skin LIBRARY** (big template set)
@@ -33,6 +40,10 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-24) **Skins everywhere + skinnable counters (Mario).** Extracted skins into shared `skins.js`
+      (skinnedCells/SKINS/SHAPES_ALL/stampSkinned/pickSkin) used by gen_hard AND gen_count. Counters now spawn varied shapes + skins
+      (count-by-colour/kind → body-colour-preserving skins so the colour stays unambiguous; total → any). Placement stays skin-safe
+      (gap uses the full footprint). + the NVARC-shape **seeded generation** (`seeded.js`/`generate-seeded`) seeded from real ARC descriptions.
 - [x] (2026-06-23) **Skins/sub-objects + derivable-colour rule + show-the-prompt (Mario).** Removed `count_to_color` (count→arbitrary
       colour) and `count_per_kind` (kind tally colour not derivable) — not ARC-style; new rule: no arbitrary colour encodings. Added
       `paintSkin` (plain-weighted + core/border/cross) over a broad shape vocab (square/disc/plus/L/triangle/diamond/T) + families
