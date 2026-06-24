@@ -40,6 +40,11 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-24) **Showcase-v5 feedback fixes + compositionality + v5.5 (Mario).** Fixed: `holed_take_largest` & `largest_to_marker`
+      "largest" is now STRICTLY UNIQUE by construction (no ties); `replicant` undoable bug (asymmetric shapes + visible-transform check).
+      New `collapse_support` (compositional physics: remove support → structure falls). New **showcase v5.5** `out/showcase_v5_5.html` =
+      all gen_hard families (grouped by prior) + physics LAST-FRAMES incl. FLUID (spill_pool composed with an obstacle). Still TODO from
+      feedback: more compositional-physics variants (chain reactions), even more shapes/colours/skins breadth, program-first IQ-style families.
 - [x] (2026-06-24) **Fractals + hierarchical corpus index + IQ seeds + showcase v5 (Mario).** `fractal_continue` (self-similar:
       each cell → the whole motif; 8 pseudo-natural motifs incl. Sierpinski). `corpus_index.js` (prior→concept→families +
       `relatedExemplars` → the agent gets RELATED correct examples when a rule is drawn; wired into generate-seeded). 6 IQ rule-type
