@@ -40,6 +40,11 @@ Running list. Newest priorities on top. Done items move to the bottom.
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-24) **Fractals + hierarchical corpus index + IQ seeds + showcase v5 (Mario).** `fractal_continue` (self-similar:
+      each cell → the whole motif; 8 pseudo-natural motifs incl. Sierpinski). `corpus_index.js` (prior→concept→families +
+      `relatedExemplars` → the agent gets RELATED correct examples when a rule is drawn; wired into generate-seeded). 6 IQ rule-type
+      descriptions in `DATASET/descriptions/iq/` (seeded.js loads them, no grids → agent invents examples; 251 seeds total). New
+      `out/showcase_v5.html` (33 families grouped by prior). NOTE: DATASET is gitignored → sync descriptions to CINECA before generate-seeded.
 - [x] (2026-06-24) **Skins everywhere + skinnable counters (Mario).** Extracted skins into shared `skins.js`
       (skinnedCells/SKINS/SHAPES_ALL/stampSkinned/pickSkin) used by gen_hard AND gen_count. Counters now spawn varied shapes + skins
       (count-by-colour/kind → body-colour-preserving skins so the colour stays unambiguous; total → any). Placement stays skin-safe
