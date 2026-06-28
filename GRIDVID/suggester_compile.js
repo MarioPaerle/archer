@@ -19,6 +19,7 @@ const B = require("./baseline.js");
 const SS = require("./super_suggester.js");
 const PROG = require("./program.js");
 const G = require("./gen_hard.js");
+const COH = require("./coherence.js");   // PAN-124 function-consistency guard
 
 // schema-name → realisation. {via:'program', prog} uses program.js LIBRARY; {via:'family', key} uses a gen_hard family.
 // null = no current realisation (honestly reported as planned, with a reason).
@@ -59,7 +60,9 @@ function validateTask(task) {
   if (new Set((task.examples || []).map(sig)).size < 2) reasons.push("examples do not vary");
   const trivial = B.trivialSolve(task);
   if (trivial) reasons.push("baseline solves it 1-step (" + trivial + ")");
-  return { validated: reasons.length === 0, reasons };
+  const coh = COH.functionConsistent(task);                       // PAN-124: OUT must be a consistent function of IN
+  if (!coh.coherent) reasons.push("incoherent: " + coh.reasons.join("; "));
+  return { validated: reasons.length === 0, reasons, signature: coh.signature };
 }
 
 function compile(suggestion, opts = {}) {

@@ -23,6 +23,7 @@ const crypto = require("crypto");
 const E = require("./engine.js");
 const B = require("./baseline.js");
 const G = require("./gen_hard.js");
+const COH = require("./coherence.js");   // PAN-124 function-consistency guard + rule-signature + difficulty
 
 // ---------- grid helpers ----------
 const rows = g => g.length, cols = g => g[0].length;
@@ -180,6 +181,11 @@ function sample(opts = {}) {
     if (!task.meta.teaching.region_coherent) continue;            // structural coherence contract
     if (maxDim && maxDimOf(task) > maxDim) continue;
     if (B.trivialSolve(task)) continue;                           // baseline-hard: a dumb 1-step solver must FAIL
+    const coh = COH.functionConsistent(task);                     // PAN-124: OUT must be a consistent function of IN
+    if (!coh.coherent) continue;
+    task.meta.difficulty = COH.difficulty(task);                  // schema-derived difficulty proxy
+    task.meta.rule_signature = coh.signature;
+    task.meta.near_dup_key = COH.nearDupKey(task);                // for downstream near-dup clustering
     seen.add(task.meta.id); out.push(task);
   }
   return { records: out, rejected, requested: n, emitted: out.length };
