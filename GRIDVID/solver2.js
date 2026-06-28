@@ -175,6 +175,21 @@ function analogyPredict(inG, tr) {               // A|B|C panels → output = tr
   return applyGridTransform(sp.panels[2], tr);
 }
 
+// ---------- counting / numerosity ----------
+const countObjs = g => seg(g).length;
+function tallyPredict(inG, color, vert) { const n = countObjs(inG); if (n < 1) return null; return vert ? Array.from({ length: n }, () => [color]) : [Array.from({ length: n }, () => color)]; }
+function pluralityColor(g) { const objs = seg(g), cnt = {}; for (const o of objs) cnt[o.mainColor] = (cnt[o.mainColor] || 0) + 1; const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]); if (!top.length || (top.length > 1 && top[0][1] === top[1][1])) return null; return +top[0][0]; }
+function blockPredict(inG, h, w) { const c = pluralityColor(inG); if (c == null) return null; return Array.from({ length: h }, () => new Array(w).fill(c)); }
+
+// ---------- occlusion: a grey (5) occluder hides part of a symmetric figure → fill by mirror ----------
+const OCC = 5;
+function deoccludePredict(inG, axis) {
+  const H = inG.length, W = inG[0].length, out = inG.map(r => r.slice());
+  let any = false;
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (inG[r][c] === OCC) { any = true; const mr = axis === "h" ? r : H - 1 - r, mc = axis === "h" ? W - 1 - c : c; const v = inG[mr][mc]; if (v === OCC) return null; out[r][c] = v; }
+  return any ? out : null;
+}
+
 // ---------- enumerate all hypotheses that FIT the train pairs ----------
 const COLNAME = ["black", "blue", "red", "green", "yellow", "grey", "magenta", "orange", "cyan", "maroon"];
 function descText(d) { return S.descText(d); }
@@ -208,6 +223,13 @@ function fitAll(train) {
     if (outColor != null && splitPanels(train[0][0])) for (const op of ["xor", "and", "or", "sub"]) add(`output = panel A ${op.toUpperCase()} panel B (in ${COLNAME[outColor]})`, 3, inG => boolPredict(inG, op, outColor)); }
   // ANALOGY A:B::C:? — infer the A→B transform from the demo panels, apply to C
   { const sp0 = splitPanels(train[0][0]); if (sp0 && sp0.panels.length === 3) { const tr = inferGridTransform(sp0.panels[0], sp0.panels[1]); if (tr) add(`analogy A:B::C:? — apply ${tr.t} (inferred from A→B) to C`, 4, inG => analogyPredict(inG, tr)); } }
+  // COUNTING: output a tally line of length = #objects, or a block in the plurality colour
+  { const o0 = train[0][1]; const flat = o0.flat(), cols = new Set(flat.filter(x => x)); const uni = cols.size === 1 ? [...cols][0] : null;
+    if (uni != null && o0.length === 1) add(`output a row of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, false));
+    if (uni != null && o0[0].length === 1) add(`output a column of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, true));
+    if (uni != null && o0.length > 1 && o0[0].length > 1) add(`output a ${o0.length}×${o0[0].length} block in the most-common object colour`, 3, inG => blockPredict(inG, o0.length, o0[0].length)); }
+  // OCCLUSION: remove the grey occluder, reconstruct the hidden cells by symmetry
+  for (const axis of ["h", "v"]) add(`remove the occluder; fill the hidden cells by ${axis === "h" ? "left-right" : "top-bottom"} symmetry`, 4, inG => deoccludePredict(inG, axis));
   // multi-step: a structural op THEN a group rule
   const STRUCT = [["gravity down", inG => gravity(inG, "down")], ["denoise", denoise], ["fill holes", fillHoles], ["keep largest", inG => keepExtreme(inG, "largest")]];
   for (const [sname, sfn] of STRUCT) {
