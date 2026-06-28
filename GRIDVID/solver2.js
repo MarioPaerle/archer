@@ -13,7 +13,9 @@
  *   node solver2.js --self-test
  */
 const S = require("./solver.js");
+const SK = require("./skins2.js");
 const { segObjects: seg, detectTransform, applyDescriptor, sub, eqG, blank } = S;
+const objSkin = o => SK.classifySkin(o.loc);
 
 // ---------- grid / object helpers ----------
 const dims = g => [g.length, g[0].length];
@@ -26,7 +28,7 @@ const sizeClass = o => o.area >= S.LARGE_THR ? "large" : "small";
 
 // ---------- relational value readers (per pair) ----------
 function singletonBy(objs, attr) {           // the object whose attr value is UNIQUE while others share → odd-one-out
-  const val = { color: o => o.mainColor, shape: o => silh(o), size: o => o.area }[attr];
+  const val = { color: o => o.mainColor, shape: o => silh(o), size: o => o.area, skin: o => objSkin(o) }[attr];
   const counts = {}; for (const o of objs) { const v = val(o); counts[v] = (counts[v] || 0) + 1; }
   const singles = objs.filter(o => counts[val(o)] === 1);
   const hasMajority = Object.values(counts).some(n => n >= 2);
@@ -40,11 +42,11 @@ function valOfFeature(feature, objs) {
     case "has_hole": return o => o.hasHole ? "holed" : "solid";
     case "orientation": return o => o.orient;
     case "size_rank": return o => o.sizeRank || "mid";
-    case "shape": return silh;
+    case "skin": { const valid = objs.every(o => objSkin(o) !== "unknown"); return valid ? (o => objSkin(o)) : null; }
   }
   return null;
 }
-const FEATURES = ["color", "size_class", "has_hole", "orientation", "size_rank", "odd_color", "odd_shape", "odd_size"];   // no raw-silhouette "shape" (unreadable); shape handled relationally via odd_shape
+const FEATURES = ["color", "size_class", "has_hole", "orientation", "size_rank", "skin", "odd_color", "odd_shape", "odd_size", "odd_skin"];
 
 // ---------- group-wise (in-place) hypothesis ----------
 function deriveGroup(feature, train) {
@@ -100,6 +102,12 @@ function connectPairs(inG) {
 }
 function completeSym(inG, axis) { const m = axis === "h" ? inG.map(r => r.slice().reverse()) : inG.slice().reverse().map(r => r.slice()); return inG.map((row, r) => row.map((x, c) => x || m[r][c])); }
 function recolorAll(inG, c) { return inG.map(r => r.map(x => x ? c : 0)); }
+function recolorToRef(inG, mode) {                // recolour ALL objects to a colour read from a reference object
+  const objs = seg(inG); if (objs.length < 2) return null; let ref;
+  if (mode === "largest") { const mx = Math.max(...objs.map(o => o.area)), k = objs.filter(o => o.area === mx); if (k.length !== 1) return null; ref = k[0].mainColor; }
+  else { const cnt = {}; for (const o of objs) cnt[o.mainColor] = (cnt[o.mainColor] || 0) + 1; const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]); if (top.length < 2 || top[0][1] === top[1][1]) return null; ref = +top[0][0]; }
+  const out = blank(inG.length, inG[0].length); for (const o of objs) for (let i = 0; i < o.h; i++) for (let j = 0; j < o.w; j++) if (o.loc[i][j]) out[o.r + i][o.c + j] = ref; return out;
+}
 function deriveRecolorAll(train) { const cols = new Set(); for (const [, o] of train) for (const row of o) for (const x of row) if (x) cols.add(x); if (cols.size !== 1) return null; const c = [...cols][0]; return c; }
 function extractObj(inG, which) {                 // output = crop of the selected object (different output size)
   const objs = seg(inG); if (objs.length < 2) return null; let sel = null;
@@ -120,6 +128,9 @@ function fitAll(train) {
   for (const f of FEATURES) { const g = deriveGroup(f, train); if (g) add(groupText(g), 2 + Object.keys(g.map).length, inG => predictGroup(inG, g)); }
   // recolor everything one colour
   const rc = deriveRecolorAll(train); if (rc != null) add(`recolour every object ${COLNAME[rc]}`, 1, inG => recolorAll(inG, rc));
+  // RELATIONAL: recolour every object to the colour of the largest / of the majority (must read a reference object)
+  add("recolour every object to the colour of the largest object", 3, inG => recolorToRef(inG, "largest"));
+  add("recolour every object to the majority colour", 3, inG => recolorToRef(inG, "majority"));
   // structural (param-free)
   for (const dir of ["down", "up", "left", "right"]) add(`gravity ${dir} (everything settles)`, 2, inG => gravity(inG, dir));
   add("fill every hole solid", 2, fillHoles);
@@ -184,4 +195,4 @@ if (require.main === module) {
   else console.log("usage: node solver2.js --self-test  (module: require('./solver2.js').solvable(task))");
 }
 
-module.exports = { solvable, solve, fitAll, gravity, fillHoles, outlineAll, denoise, keepExtreme, removeExtreme, connectPairs, completeSym, recolorAll, extractObj, singletonBy, FEATURES };
+module.exports = { solvable, solve, fitAll, gravity, fillHoles, outlineAll, denoise, keepExtreme, removeExtreme, connectPairs, completeSym, recolorAll, recolorToRef, extractObj, singletonBy, FEATURES };
