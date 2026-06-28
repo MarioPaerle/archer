@@ -34,6 +34,12 @@ function singletonBy(objs, attr) {           // the object whose attr value is U
   const hasMajority = Object.values(counts).some(n => n >= 2);
   return (singles.length === 1 && hasMajority) ? singles[0] : null;   // exactly one odd + a clear "rest"
 }
+function findFrame(objs) {                    // the enclosing container: a holed object whose interior holds ≥1 centroid
+  const holed = objs.filter(o => o.hasHole); let best = null, bestA = -1;
+  for (const f of holed) { const inside = objs.filter(o => o !== f && o.cr > f.r && o.cr < f.r + f.h - 1 && o.cc > f.c && o.cc < f.c + f.w - 1).length; if (inside >= 1 && f.h * f.w > bestA) { bestA = f.h * f.w; best = f; } }
+  return best;
+}
+const insideFrame = (o, f) => o.cr > f.r && o.cr < f.r + f.h - 1 && o.cc > f.c && o.cc < f.c + f.w - 1;
 function valOfFeature(feature, objs) {
   if (feature.startsWith("odd_")) { const odd = singletonBy(objs, feature.slice(4)); if (!odd) return null; return o => o === odd ? "odd" : "normal"; }
   switch (feature) {
@@ -47,6 +53,27 @@ function valOfFeature(feature, objs) {
   return null;
 }
 const FEATURES = ["color", "size_class", "has_hole", "orientation", "size_rank", "skin", "odd_color", "odd_shape", "odd_size", "odd_skin"];
+
+// CONTAINMENT (bespoke: the frame's bbox encloses the inside objects, so generic per-object bbox detection
+// breaks on the frame — treat the frame as identity and classify only the OTHER objects inside/outside).
+function deriveContainment(train) {
+  const map = {};
+  for (const [inG, outG] of train) {
+    if (inG.length !== outG.length || inG[0].length !== outG[0].length) return null;
+    const objs = seg(inG), f = findFrame(objs); if (!f) return null;
+    // frame RING must be unchanged (check only the frame-colour cells — the bbox also covers the inside objects)
+    for (let i = 0; i < f.h; i++) for (let j = 0; j < f.w; j++) if (f.loc[i][j] === f.mainColor && (outG[f.r + i][f.c + j] || 0) !== f.mainColor) return null;
+    for (const o of objs) { if (o === f) continue; const desc = detectTransform(o.loc, sub(outG, o.r, o.c, o.h, o.w), o.mainColor); if (!desc) return null; const v = insideFrame(o, f) ? "inside" : "outside"; if (map[v] == null) map[v] = desc; else if (map[v] !== desc) return null; }
+  }
+  if (!Object.values(map).some(d => d !== "identity")) return null;
+  return map;
+}
+function predictContainment(inG, map) {
+  const objs = seg(inG), f = findFrame(objs); if (!f) return null; const out = blank(inG.length, inG[0].length);
+  for (let i = 0; i < f.h; i++) for (let j = 0; j < f.w; j++) if (f.loc[i][j] === f.mainColor) out[f.r + i][f.c + j] = f.mainColor;   // stamp only the ring
+  for (const o of objs) { if (o === f) continue; const d = map[insideFrame(o, f) ? "inside" : "outside"] || "identity"; if (d === "remove") continue; const loc = applyDescriptor(d, o.loc, o.mainColor); for (let i = 0; i < loc.length; i++) for (let j = 0; j < loc[0].length; j++) if (loc[i][j]) out[o.r + i][o.c + j] = loc[i][j]; }
+  return out;
+}
 
 // ---------- group-wise (in-place) hypothesis ----------
 function deriveGroup(feature, train) {
@@ -116,6 +143,38 @@ function extractObj(inG, which) {                 // output = crop of the select
   return crop(gridFrom(inG.length, inG[0].length, [sel]));
 }
 
+// ---------- panels: split a grid by full-line dividers (for boolean / analogy) ----------
+function dividerCols(g) { const H = g.length, W = g[0].length, out = []; for (let c = 0; c < W; c++) { const col0 = g[0][c]; if (col0 && g.every(row => row[c] === col0)) out.push(c); } return out; }
+function splitPanels(g) {                       // → { panels:[grid…], dcolor } for vertical dividers, or null
+  const ds = dividerCols(g); if (!ds.length) return null; const dcolor = g[0][ds[0]];
+  const cuts = [-1, ...ds, g[0].length], panels = [];
+  for (let i = 0; i < cuts.length - 1; i++) { const a = cuts[i] + 1, b = cuts[i + 1]; if (b > a) panels.push(g.map(row => row.slice(a, b))); }
+  return panels.length >= 2 ? { panels, dcolor } : null;
+}
+const binarize = p => p.map(r => r.map(x => x ? 1 : 0));
+const sizeEq = (a, b) => a.length === b.length && a[0].length === b[0].length;
+function boolCombine(A, B, op) {                 // cell-wise boolean of two equal-size masks → mask
+  if (!sizeEq(A, B)) return null; const a = binarize(A), b = binarize(B);
+  return a.map((row, r) => row.map((x, c) => { const y = b[r][c]; return op === "or" ? (x | y) : op === "and" ? (x & y) : op === "xor" ? (x ^ y) : op === "sub" ? (x & (1 - y)) : op === "nand" ? (1 - (x & y)) : 0; }));
+}
+function boolPredict(inG, op, outColor) {        // out = (A op B) painted in outColor
+  const sp = splitPanels(inG); if (!sp || sp.panels.length !== 2) return null;
+  const m = boolCombine(sp.panels[0], sp.panels[1], op); if (!m) return null;
+  return m.map(r => r.map(x => x ? outColor : 0));
+}
+const flipH = g => g.map(r => r.slice().reverse()), flipV = g => g.slice().reverse().map(r => r.slice()), rot180 = g => flipH(flipV(g));
+function colormapOf(A, B) { if (!sizeEq(A, B)) return null; const m = {}; for (let r = 0; r < A.length; r++) for (let c = 0; c < A[0].length; c++) { const x = A[r][c], y = B[r][c]; if (x in m) { if (m[x] !== y) return null; } else m[x] = y; } return m; }
+function inferGridTransform(A, B) {              // the simple transform mapping panel A → panel B, or null
+  if (eqG(A, B)) return { t: "identity" };
+  if (sizeEq(A, B)) { if (eqG(flipH(A), B)) return { t: "mirror_h" }; if (eqG(flipV(A), B)) return { t: "flip_v" }; if (eqG(rot180(A), B)) return { t: "rotate_180" }; const m = colormapOf(A, B); if (m) return { t: "recolor", map: m }; }
+  return null;
+}
+function applyGridTransform(C, tr) { if (tr.t === "identity") return C.map(r => r.slice()); if (tr.t === "mirror_h") return flipH(C); if (tr.t === "flip_v") return flipV(C); if (tr.t === "rotate_180") return rot180(C); if (tr.t === "recolor") return C.map(r => r.map(x => x in tr.map ? tr.map[x] : x)); return null; }
+function analogyPredict(inG, tr) {               // A|B|C panels → output = transform(C), transform inferred from A→B
+  const sp = splitPanels(inG); if (!sp || sp.panels.length !== 3) return null;
+  return applyGridTransform(sp.panels[2], tr);
+}
+
 // ---------- enumerate all hypotheses that FIT the train pairs ----------
 const COLNAME = ["black", "blue", "red", "green", "yellow", "grey", "magenta", "orange", "cyan", "maroon"];
 function descText(d) { return S.descText(d); }
@@ -142,6 +201,13 @@ function fitAll(train) {
   for (const w of ["largest", "smallest"]) { add(`keep only the ${w} object`, 2, inG => keepExtreme(inG, w)); add(`remove the ${w} object`, 2, inG => removeExtreme(inG, w)); }
   // extraction (output = the selected object, cropped)
   for (const w of ["largest", "smallest", "odd_color", "odd_shape", "odd_size"]) add(`output only the ${w.replace("odd_", "odd-by-")} object`, 2, inG => extractObj(inG, w));
+  // CONTAINMENT: recolour/remove objects inside vs outside a frame (relational)
+  { const m = deriveContainment(train); if (m) add("inside the frame: " + Object.entries(m).map(([v, d]) => `${v}→${descText(d)}`).join(", "), 4, inG => predictContainment(inG, m)); }
+  // BOOLEAN figure-algebra: two divider-split panels → A op B (the Carpenter/PGM family)
+  { const out0 = train[0][1], cols = new Set(); for (const row of out0) for (const x of row) if (x) cols.add(x); const outColor = cols.size === 1 ? [...cols][0] : null;
+    if (outColor != null && splitPanels(train[0][0])) for (const op of ["xor", "and", "or", "sub"]) add(`output = panel A ${op.toUpperCase()} panel B (in ${COLNAME[outColor]})`, 3, inG => boolPredict(inG, op, outColor)); }
+  // ANALOGY A:B::C:? — infer the A→B transform from the demo panels, apply to C
+  { const sp0 = splitPanels(train[0][0]); if (sp0 && sp0.panels.length === 3) { const tr = inferGridTransform(sp0.panels[0], sp0.panels[1]); if (tr) add(`analogy A:B::C:? — apply ${tr.t} (inferred from A→B) to C`, 4, inG => analogyPredict(inG, tr)); } }
   // multi-step: a structural op THEN a group rule
   const STRUCT = [["gravity down", inG => gravity(inG, "down")], ["denoise", denoise], ["fill holes", fillHoles], ["keep largest", inG => keepExtreme(inG, "largest")]];
   for (const [sname, sfn] of STRUCT) {
