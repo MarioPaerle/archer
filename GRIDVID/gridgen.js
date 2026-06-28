@@ -92,8 +92,23 @@ function compileSpec(line, seed = 1) {
   return task ? { ok: true, task } : { ok: false, error: "could not satisfy spec within budget", line };
 }
 function generateFromSpecs(lines, seedBase = 1) {
-  const out = [], errors = []; lines.forEach((line, i) => { if (!line.trim() || line.trim().startsWith("#")) return; const r = compileSpec(line, seedBase + i); if (r.ok) out.push(r.task); else errors.push(r); });
-  return { records: out, errors };
+  // robust to messy LLM output: ignore any line that isn't a `task ...` line (prose, ``` fences, numbering).
+  const out = [], errors = []; let seen = 0;
+  lines.forEach((raw, i) => { const line = raw.replace(/^\s*[-*\d.)]+\s*/, "").trim(); if (!/^task\s+\S/i.test(line)) return; seen++; const r = compileSpec(line, seedBase + i); if (r.ok) out.push(r.task); else errors.push(r); });
+  return { records: out, errors, seen };
+}
+
+// ---------- live LLM bridge: prompt a (weak) model for specs, then compile+verify them ----------
+const MODEL_ALIAS = { haiku: "claude-haiku-4-5-20251001", sonnet: "claude-sonnet-4-6", opus: "claude-opus-4-8" };
+async function promptLLM(opts = {}) {
+  const key = process.env.ANTHROPIC_API_KEY; if (!key) throw new Error("ANTHROPIC_API_KEY not set — export it to call a real model");
+  const model = MODEL_ALIAS[opts.model] || opts.model || MODEL_ALIAS.haiku, nTasks = opts.tasks || 20;
+  const prompt = promptCard() + `\n\nNow act as a task author. Write EXACTLY ${nTasks} diverse problem specs, one per line, using ONLY the families above. Output ONLY the \`task ...\` lines — no prose, no numbering, no code fences. Vary families and parameters widely.`;
+  const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model, max_tokens: 1500, messages: [{ role: "user", content: prompt }] }) });
+  if (!res.ok) throw new Error("API " + res.status + ": " + (await res.text()).slice(0, 200));
+  const data = await res.json(), text = (data.content || []).map(b => b.text || "").join("\n");
+  const compiled = generateFromSpecs(text.split("\n"), opts.seed || 1);
+  return { model, raw: text, ...compiled };
 }
 
 // ---------- balanced corpus from the WHOLE registry (no LLM needed) ----------
@@ -140,7 +155,7 @@ function selfTest() {
   if (r.records.length !== 5) throw new Error("spec compile: expected 5 ok, got " + r.records.length + " (errors " + r.errors.length + ")");
   if (!r.records[0].meta.rule.toLowerCase().includes("xor")) throw new Error("boolean op=xor not honoured");
   if (!r.records[1].meta.rule.toLowerCase().includes("gravity up")) throw new Error("gravity dir=up not honoured");
-  if (r.errors.length !== 2) throw new Error("expected 2 spec errors, got " + r.errors.length);
+  if (r.errors.length !== 1) throw new Error("expected 1 spec error (unknown family; the prose line is ignored), got " + r.errors.length);
   // balanced corpus covers many families + is deterministic
   const g = generate({ n: 40, seed: 4 }); if (Object.keys(g.families).length < 10) throw new Error("balanced corpus too few families: " + Object.keys(g.families).length);
   const a = generate({ n: 12, seed: 9 }).records.map(t => t.meta.id).join(","), b = generate({ n: 12, seed: 9 }).records.map(t => t.meta.id).join(",");
@@ -152,6 +167,7 @@ if (require.main === module) {
   const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
   if (args.includes("--self-test")) { selfTest(); console.log("gridgen: self-test PASS"); }
   else if (args.includes("--prompt")) { console.log(promptCard()); }
+  else if (args.includes("--llm")) { promptLLM({ model: flag("--model", "haiku"), tasks: +flag("--tasks", 20), seed: +flag("--seed", 1) }).then(r => { const o = flag("-o", null); console.error(`${r.model}: wrote ${r.records.length}/${r.seen} task-lines (${r.errors.length} errors)`); for (const e of r.errors) console.error("  ✗ " + e.line + " — " + e.error); if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error("→ " + o); } else console.error("\n--- raw model output ---\n" + r.raw); }).catch(e => { console.error("LLM error: " + e.message); process.exit(1); }); }
   else if (args.includes("--from-specs")) { const fs = require("fs"), lines = fs.readFileSync(flag("--from-specs"), "utf8").split("\n"); const r = generateFromSpecs(lines); const o = flag("-o", null); if (o) fs.writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`compiled ${r.records.length} tasks, ${r.errors.length} errors`); for (const e of r.errors) console.error("  ✗ " + e.line + "  — " + e.error); }
   else { const n = +flag("--n", 100), seed = +flag("--seed", 1), o = flag("-o", null), r = generate({ n, seed, distinct: args.includes("--distinct") });
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} tasks → ${o}`); console.error("by family:", JSON.stringify(r.families)); }
