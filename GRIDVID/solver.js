@@ -252,4 +252,4 @@ if (require.main === module) {
   else console.log("usage: node solver.js --self-test  (module: require('./solver.js').solvable(task))");
 }
 
-module.exports = { solve, solvable, segObjects, detectTransform, fitHypotheses, predict, ruleText, KEYS, LARGE_THR };
+module.exports = { solve, solvable, segObjects, detectTransform, applyDescriptor, fitHypotheses, predict, ruleText, descText, KEYS, LARGE_THR, sub, outlineGrid, eqG, blank, flipH, flipV, rot180 };
