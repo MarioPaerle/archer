@@ -61,6 +61,7 @@ function keyOf(key, o, scene) {
     case "quadrant": return quadrantOf(o, scene.H, scene.W);
     case "has_hole": return hasHole(o) ? "holed" : "solid";
     case "orientation": return orientationOf(o);
+    case "size_rank": { const areas = scene.objects.map(area), mx = Math.max(...areas), mn = Math.min(...areas), a = area(o); return a === mx ? "largest" : a === mn ? "smallest" : "mid"; }
     case "marker": return o.marker != null ? o.marker : "none";
     default: throw new Error("unknown key " + key.k);
   }
