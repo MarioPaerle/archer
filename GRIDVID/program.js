@@ -25,6 +25,7 @@ const shapeCells = (kind, s) => kind === "frame" || kind === "ring" ? E.buildSha
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
 const flipVcells = cells => { const [h] = bbox(cells); return cells.map(([r, c]) => [h - 1 - r, c]); };
 const rot180cells = cells => { const [h, w] = bbox(cells); return cells.map(([r, c]) => [h - 1 - r, w - 1 - c]); };
+const rot90cells = cells => { const [h] = bbox(cells); return cells.map(([r, c]) => [c, h - 1 - r]); };   // 90° CW
 const outlineOf = cells => { const set = new Set(cells.map(([r, c]) => r + "," + c)); return cells.filter(([r, c]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dr, dc]) => !set.has((r + dr) + "," + (c + dc)))); };
 const rectCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) o.push([r, c]); return o; };
 const area = o => o.cells.length;
@@ -48,6 +49,7 @@ const SIZE_THR = 6;   // area ≥ THR ⇒ "large"
 function sizeClass(o) { return area(o) >= SIZE_THR ? "large" : "small"; }
 function quadrantOf(o, H, W) { const [r, c] = centerOf(o); return (r < H / 2 ? "T" : "B") + (c < W / 2 ? "L" : "R"); }
 function hasHole(o) { return HOLED.has(o.kind); }
+function orientationOf(o) { const [h, w] = bbox(o.cells); return h > w ? "tall" : w > h ? "wide" : "square"; }
 
 // key(descriptor).of(obj, scene) → primitive value used by dispatch
 function keyOf(key, o, scene) {
@@ -58,6 +60,7 @@ function keyOf(key, o, scene) {
     case "shape_kind": return o.kind;
     case "quadrant": return quadrantOf(o, scene.H, scene.W);
     case "has_hole": return hasHole(o) ? "holed" : "solid";
+    case "orientation": return orientationOf(o);
     case "marker": return o.marker != null ? o.marker : "none";
     default: throw new Error("unknown key " + key.k);
   }
@@ -83,47 +86,57 @@ function selPred(sel) {
     case "by_kind": return o => o.kind === sel.kind;
     case "has_hole": return o => hasHole(o) === (sel.holed !== false);
     case "in_region": return (o, scene) => inRegion(sel.region, o, scene);
+    case "by_orientation": return o => orientationOf(o) === sel.orient;
     case "largest": { let max = -1; return (o, scene) => { if (max < 0) max = Math.max(...scene.objects.map(area)); return area(o) === max; }; }
+    case "smallest": { let min = -1; return (o, scene) => { if (min < 0) min = Math.min(...scene.objects.map(area)); return area(o) === min; }; }
     default: throw new Error("unknown selector " + sel.s);
   }
 }
 
 // ============================================================ transforms (tagged, serialisable)
 // pure per-object transforms mutate obj in place; 'fall' & 'remove' are handled by the executor.
-function applyPure(t, o) {
+const GRAV = { down: [1, 0], up: [-1, 0], left: [0, -1], right: [0, 1] };
+function applyPure(t, o, scene) {
   switch (t.t) {
     case "identity": return;
     case "recolor": o.color = t.color; return;
     case "recolor_core": o.core = t.color; return;
+    case "swap_color": if (o.color === t.from) o.color = t.to; return;
     case "mirror_h": o.cells = flipHcells(o.cells); return;
     case "flip_v": o.cells = flipVcells(o.cells); return;
+    case "rotate_90": o.cells = rot90cells(o.cells); return;
     case "rotate_180": o.cells = rot180cells(o.cells); return;
     case "outline": o.cells = outlineOf(o.cells); o.kind = "outline"; return;
     case "fill_hole": o.cells = rectCells(...bbox(o.cells)); o.kind = "square"; return;
+    case "translate": { const [bh, bw] = bbox(o.cells); o.r = Math.max(0, Math.min(scene.H - bh, o.r + (t.dr || 0))); o.c = Math.max(0, Math.min(scene.W - bw, o.c + (t.dc || 0))); return; }
     case "remove": o._removed = true; return;
-    case "fall": o._fall = true; return;          // marker; executed in the gravity pass
+    case "fall": o._fall = true; o._falldir = t.dir || "down"; return;   // executed in the gravity pass
     default: throw new Error("unknown transform " + t.t);
   }
 }
 
-// drop every _fall object straight down until it rests on the floor or on any occupied cell of a
-// NON-falling object / already-settled faller. Lowest-first so stacks settle without merging.
+// slide every _fall object along its direction until it rests on the wall or on an occupied cell of a
+// NON-falling object / already-settled faller (no merge). Grouped by direction; leading-edge first.
 function gravityPass(scene) {
   const fallers = scene.objects.filter(o => o._fall && !o._removed);
-  const statics = scene.objects.filter(o => !o._fall && !o._removed);
+  if (!fallers.length) return;
   const occ = new Set();
-  for (const o of statics) for (const [r, c] of absCells(o)) occ.add(r + "," + c);
-  fallers.sort((a, b) => Math.max(...absCells(b).map(p => p[0])) - Math.max(...absCells(a).map(p => p[0])));
-  for (const o of fallers) {
-    let d = 0;
-    for (; ;) {
-      const next = absCells(o).map(([r, c]) => [r + d + 1, c]);
-      if (next.some(([r, c]) => r >= scene.H || occ.has(r + "," + c))) break;
-      d++;
+  for (const o of scene.objects.filter(o => !o._fall && !o._removed)) for (const [r, c] of absCells(o)) occ.add(r + "," + c);
+  const byDir = {}; for (const o of fallers) (byDir[o._falldir || "down"] = byDir[o._falldir || "down"] || []).push(o);
+  for (const [dir, group] of Object.entries(byDir)) {
+    const [vr, vc] = GRAV[dir] || GRAV.down, proj = o => Math.max(...absCells(o).map(([r, c]) => r * vr + c * vc));
+    group.sort((a, b) => proj(b) - proj(a));
+    for (const o of group) {
+      let d = 0;
+      for (; ;) {
+        const next = absCells(o).map(([r, c]) => [r + (d + 1) * vr, c + (d + 1) * vc]);
+        if (next.some(([r, c]) => r < 0 || c < 0 || r >= scene.H || c >= scene.W || occ.has(r + "," + c))) break;
+        d++;
+      }
+      o.r += d * vr; o.c += d * vc;
+      for (const [r, c] of absCells(o)) occ.add(r + "," + c);
+      delete o._fall; delete o._falldir;
     }
-    o.r += d;
-    for (const [r, c] of absCells(o)) occ.add(r + "," + c);
-    delete o._fall;
   }
 }
 
@@ -134,14 +147,14 @@ function applyNode(node, scene) {
   switch (node.op) {
     case "apply": {                               // apply ONE transform to a selected subset
       const pred = selPred(node.sel);
-      for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o);
+      for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s);
       gravityPass(s); s.objects = s.objects.filter(o => !o._removed); return s;
     }
     case "dispatch": {                            // per-object route by key → case transform (THE long tail)
       for (const o of s.objects) {
         const v = keyOf(node.key, o, s);
         const t = (node.cases && Object.prototype.hasOwnProperty.call(node.cases, v)) ? node.cases[v] : (node.default || { t: "identity" });
-        applyPure(t, o);
+        applyPure(t, o, s);
       }
       gravityPass(s); s.objects = s.objects.filter(o => !o._removed); return s;
     }
@@ -170,7 +183,7 @@ function applyNode(node, scene) {
 }
 
 // ============================================================ scene sampler
-const KINDS_SOLID = ["square", "plus", "Lshape", "triangle", "diamond"];
+const KINDS_SOLID = ["square", "plus", "Lshape", "triangle", "diamond", "Tshape", "notch"];
 function placeNoOverlap(rng, H, W, specs, gap = 1, upperFrac = 1) {
   const occ = blank(H, W), out = [];
   const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
