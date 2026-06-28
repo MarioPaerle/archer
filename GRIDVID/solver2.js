@@ -129,6 +129,14 @@ function connectPairs(inG) {
 }
 function completeSym(inG, axis) { const m = axis === "h" ? inG.map(r => r.slice().reverse()) : inG.slice().reverse().map(r => r.slice()); return inG.map((row, r) => row.map((x, c) => x || m[r][c])); }
 function recolorAll(inG, c) { return inG.map(r => r.map(x => x ? c : 0)); }
+function extremeObj(objs, which) { if (objs.length < 2) return null; const ext = which === "largest" ? Math.max(...objs.map(o => o.area)) : Math.min(...objs.map(o => o.area)); const k = objs.filter(o => o.area === ext); return k.length === 1 ? k[0] : null; }
+function morphToExtreme(inG, which) {             // RELATIONAL/depth: every object morphs into the largest/smallest object's SHAPE (keeps its own colour & position)
+  const objs = seg(inG), anchor = extremeObj(objs, which); if (!anchor) return null;
+  const cells = []; for (let i = 0; i < anchor.h; i++) for (let j = 0; j < anchor.w; j++) if (anchor.loc[i][j]) cells.push([i, j]);
+  const out = blank(inG.length, inG[0].length);
+  for (const o of objs) for (const [i, j] of cells) { const r = o.r + i, c = o.c + j; if (r < inG.length && c < inG[0].length) out[r][c] = o.mainColor; }
+  return out;
+}
 function recolorToRef(inG, mode) {                // recolour ALL objects to a colour read from a reference object
   const objs = seg(inG); if (objs.length < 2) return null; let ref;
   if (mode === "largest") { const mx = Math.max(...objs.map(o => o.area)), k = objs.filter(o => o.area === mx); if (k.length !== 1) return null; ref = k[0].mainColor; }
@@ -205,6 +213,9 @@ function fitAll(train) {
   // RELATIONAL: recolour every object to the colour of the largest / of the majority (must read a reference object)
   add("recolour every object to the colour of the largest object", 3, inG => recolorToRef(inG, "largest"));
   add("recolour every object to the majority colour", 3, inG => recolorToRef(inG, "majority"));
+  // RELATIONAL/depth: every object morphs into the largest / smallest object's SHAPE (keeps its own colour)
+  add("every object morphs into the shape of the largest object", 3, inG => morphToExtreme(inG, "largest"));
+  add("every object morphs into the shape of the smallest object", 3, inG => morphToExtreme(inG, "smallest"));
   // structural (param-free)
   for (const dir of ["down", "up", "left", "right"]) add(`gravity ${dir} (everything settles)`, 2, inG => gravity(inG, dir));
   add("fill every hole solid", 2, fillHoles);

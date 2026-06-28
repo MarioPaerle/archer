@@ -97,7 +97,21 @@ function selPred(sel) {
 // ============================================================ transforms (tagged, serialisable)
 // pure per-object transforms mutate obj in place; 'fall' & 'remove' are handled by the executor.
 const GRAV = { down: [1, 0], up: [-1, 0], left: [0, -1], right: [0, 1] };
-function applyPure(t, o, scene) {
+// resolve a RELATIONAL reference object (the rule's "anchor") → a snapshot the later steps depend on. This is
+// what makes a rule DEEP rather than wide: the anchor's identity/colour/shape drives what happens to the rest.
+const sigOf = o => o.cells.map(([r, c]) => r + "," + c).sort().join(";");
+function resolveRef(pick, scene) {
+  const objs = scene.objects.filter(o => !o._removed); if (!objs.length) return null;
+  let o = null;
+  if (pick === "largest") { const m = Math.max(...objs.map(area)), k = objs.filter(x => area(x) === m); o = k.length === 1 ? k[0] : null; }
+  else if (pick === "smallest") { const m = Math.min(...objs.map(area)), k = objs.filter(x => area(x) === m); o = k.length === 1 ? k[0] : null; }
+  else if (pick === "unique_color") { const c = {}; objs.forEach(x => c[x.color] = (c[x.color] || 0) + 1); const u = objs.filter(x => c[x.color] === 1); o = u.length === 1 ? u[0] : null; }
+  else if (pick === "unique_shape") { const c = {}; objs.forEach(x => c[sigOf(x)] = (c[sigOf(x)] || 0) + 1); const u = objs.filter(x => c[sigOf(x)] === 1); o = u.length === 1 ? u[0] : null; }
+  if (!o) return null;
+  const [h, w] = bbox(o.cells);
+  return { color: o.color, core: o.core, cells: o.cells.map(c => c.slice()), kind: o.kind, cr: o.r + (h - 1) / 2, cc: o.c + (w - 1) / 2 };
+}
+function applyPure(t, o, scene, env = {}) {
   switch (t.t) {
     case "identity": return;
     case "recolor": o.color = t.color; return;
@@ -112,6 +126,10 @@ function applyPure(t, o, scene) {
     case "translate": { const [bh, bw] = bbox(o.cells); o.r = Math.max(0, Math.min(scene.H - bh, o.r + (t.dr || 0))); o.c = Math.max(0, Math.min(scene.W - bw, o.c + (t.dc || 0))); return; }
     case "remove": o._removed = true; return;
     case "fall": o._fall = true; o._falldir = t.dir || "down"; return;   // executed in the gravity pass
+    // ---- RELATIONAL (depth): act on o using the bound reference object env[ref] ----
+    case "recolor_to": { const r = env[t.ref]; if (r) o.color = r.color; return; }          // take the anchor's colour
+    case "copy_shape": { const r = env[t.ref]; if (r) { o.cells = r.cells.map(c => c.slice()); o.kind = r.kind; } return; }   // morph into the anchor's shape
+    case "reflect_pos": { const r = env[t.ref]; if (r) { const [bh, bw] = bbox(o.cells); if (t.axis === "v") o.r = Math.round(2 * r.cr - o.r - (bh - 1)); else o.c = Math.round(2 * r.cc - o.c - (bw - 1)); o.r = Math.max(0, Math.min(scene.H - bh, o.r)); o.c = Math.max(0, Math.min(scene.W - bw, o.c)); } return; }   // mirror position across the anchor
     default: throw new Error("unknown transform " + t.t);
   }
 }
@@ -143,42 +161,39 @@ function gravityPass(scene) {
 
 // ============================================================ combinator interpreter
 // applyNode(node, scene) → new scene. Nodes lower to a per-object transform assignment + a gravity pass.
-function applyNode(node, scene) {
+function applyNode(node, scene, env = {}) {
   let s = cloneScene(scene);
   switch (node.op) {
+    case "bind": { const r = resolveRef(node.pick, s); if (r) env[node.name] = r; return s; }   // capture the anchor for later steps
     case "apply": {                               // apply ONE transform to a selected subset
       const pred = selPred(node.sel);
-      for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s);
+      for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s, env);
       gravityPass(s); s.objects = s.objects.filter(o => !o._removed); return s;
     }
     case "dispatch": {                            // per-object route by key → case transform (THE long tail)
       for (const o of s.objects) {
         const v = keyOf(node.key, o, s);
         const t = (node.cases && Object.prototype.hasOwnProperty.call(node.cases, v)) ? node.cases[v] : (node.default || { t: "identity" });
-        applyPure(t, o, s);
+        applyPure(t, o, s, env);
       }
       gravityPass(s); s.objects = s.objects.filter(o => !o._removed); return s;
     }
     case "mask": {                                // apply a sub-node only to objects inside a region
       const keep = s.objects.filter(o => !inRegion(node.region, o, s));
       const inside = { H: s.H, W: s.W, bg: s.bg, objects: s.objects.filter(o => inRegion(node.region, o, s)) };
-      const done = applyNode(node.node, inside);
+      const done = applyNode(node.node, inside, env);
       return { H: s.H, W: s.W, bg: s.bg, objects: keep.concat(done.objects) };
     }
-    case "seq": { let acc = s; for (const step of node.steps) acc = applyNode(step, acc); return acc; }
+    case "seq": { let acc = s; for (const step of node.steps) acc = applyNode(step, acc, env); return acc; }
     case "parallel": {                            // branches must touch DISJOINT objects (asserted by caller via regions/selectors)
       let acc = cloneScene(s);
-      for (const br of node.branches) {
-        const res = applyNode(br, acc);
-        acc = res;                                 // sequential application; disjointness keeps it order-independent
-      }
+      for (const br of node.branches) acc = applyNode(br, acc, env);   // sequential; disjointness keeps it order-independent
       return acc;
     }
-    case "repeat": { let acc = s; for (let i = 0; i < node.n; i++) acc = applyNode(node.node, acc); return acc; }
+    case "repeat": { let acc = s; for (let i = 0; i < node.n; i++) acc = applyNode(node.node, acc, env); return acc; }
     case "overlay": {                             // stamp extra objects on top (e.g. a marker layer / second concept)
       return { H: s.H, W: s.W, bg: s.bg, objects: s.objects.concat((node.objects || []).map(cloneObj)) };
     }
-    case "bind": return s;                        // binding is metadata-only here (the selector is reused by name in the tree)
     default: throw new Error("unknown node op " + node.op);
   }
 }

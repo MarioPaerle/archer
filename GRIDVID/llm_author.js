@@ -17,15 +17,18 @@ const P = require("./program.js");
 
 // ---------- AST validation (reject anything the interpreter doesn't know → no silent garbage) ----------
 const SEL = new Set(["all", "by_color", "by_core", "by_size", "by_kind", "has_hole", "in_region", "by_orientation", "largest", "smallest"]);
-const TR = new Set(["identity", "recolor", "recolor_core", "swap_color", "mirror_h", "flip_v", "rotate_90", "rotate_180", "outline", "fill_hole", "remove", "fall", "translate"]);
+const TR = new Set(["identity", "recolor", "recolor_core", "swap_color", "mirror_h", "flip_v", "rotate_90", "rotate_180", "outline", "fill_hole", "remove", "fall", "translate", "recolor_to", "copy_shape", "reflect_pos"]);
 const KEY = new Set(["color", "core_color", "size_class", "shape_kind", "quadrant", "has_hole", "orientation", "size_rank"]);
 const REG = new Set(["half", "quadrant", "rect"]);
-function vTransform(t) { if (!t || !TR.has(t.t)) throw new Error("bad transform " + JSON.stringify(t)); }
+const PICK = new Set(["largest", "smallest", "unique_color", "unique_shape"]);
+const REL = new Set(["recolor_to", "copy_shape", "reflect_pos"]);
+function vTransform(t) { if (!t || !TR.has(t.t)) throw new Error("bad transform " + JSON.stringify(t)); if (REL.has(t.t) && !t.ref) throw new Error("relational transform needs a ref: " + JSON.stringify(t)); }
 function vSel(s) { if (!s || !SEL.has(s.s)) throw new Error("bad selector " + JSON.stringify(s)); if (s.s === "in_region") vRegion(s.region); }
 function vRegion(r) { if (!r || !REG.has(r.reg)) throw new Error("bad region " + JSON.stringify(r)); }
 function vNode(n) {
   if (!n || !n.op) throw new Error("node missing op");
   switch (n.op) {
+    case "bind": if (!n.name || !PICK.has(n.pick)) throw new Error("bad bind " + JSON.stringify(n)); return;
     case "apply": vSel(n.sel); vTransform(n.transform); return;
     case "dispatch": if (!n.key || !KEY.has(n.key.k)) throw new Error("bad key"); for (const t of Object.values(n.cases || {})) vTransform(t); if (n.default) vTransform(n.default); return;
     case "mask": vRegion(n.region); vNode(n.node); return;
@@ -48,7 +51,7 @@ function normTransform(t) {
 }
 function normNode(n) {
   if (!n || !n.op) return n;
-  if (n.op === "apply") { if (n.transform) n.transform = normTransform(n.transform); if (n.sel && n.sel.color != null) n.sel.color = toColor(n.sel.color); return n; }
+  if (n.op === "apply") { if (typeof n.sel === "string") n.sel = { s: n.sel }; if (n.transform) n.transform = normTransform(n.transform); if (n.sel && n.sel.color != null) n.sel.color = toColor(n.sel.color); return n; }
   if (n.op === "dispatch") {
     const k = n.key && n.key.k, cases = {};
     for (let [v, t] of Object.entries(n.cases || {})) {
@@ -121,38 +124,49 @@ function checkAnswer(task, answerText) {
   return JSON.stringify(got) === JSON.stringify(want);
 }
 
-const GRAMMAR = `# AUTHOR a grid-puzzle PROGRAM. You invent the RULE by composing primitives — do NOT pick a single canned family.
-# Output STRICT JSON: { "idea": "<one-line natural-language rule>", "scene": {...}, "rule": <AST> }
+const GRAMMAR = `# AUTHOR a grid-puzzle PROGRAM. Output STRICT JSON: { "idea": "<one line>", "scene": {...}, "rule": <AST> }
 #
-# scene (the input you want): { "K": <#objects 3-7>, "kinds": [shapes], "palette": [colours 1-9],
-#   "size": N or "sizes": [N..], "withCore": true/false, "corePalette":[..], "ensureCores":[..],
-#   "holedMix": true/false, "spreadHalves": true/false }
-#   shapes: square plus Lshape triangle diamond Tshape notch frame ring   colours: 1blue 2red 3green 4yellow 5grey 6magenta 7orange 8cyan 9maroon
+# ★ DEPTH, NOT WIDTH. The best rule is a SHORT, DEEP chain (2 steps) where step 2 DEPENDS on step 1 — NOT a
+#   wide pile of 4-5 independent per-object branches. A "wide" rule ("reds mirror, blues rotate, greens
+#   remove, then recolour the smallest") is shallow and boring. A "deep" rule has ONE anchor idea that flows:
+#   you must FIND something first, then act on the rest RELATIVE to it.
+# ★ Prefer RELATIONAL rules: bind an ANCHOR object (the largest / the unique-coloured one / the odd-shaped
+#   one), then make the OTHER objects depend on it — take its colour, copy its shape, mirror across it. The
+#   solver has to identify the anchor to solve it. THIS is real depth.
+# ★ Make it VISUAL / shape-based: objects morphing shape, mirroring, growing — not just category→recolour.
+# ★ Keep dispatch SMALL (≤2 cases). Do not stack >2 steps. One clear, deep, surprising idea.
 #
-# rule AST nodes (NEST them freely — this is where you are creative):
-#   {"op":"apply","sel":<SEL>,"transform":<TR>}                         apply one transform to a selected subset
-#   {"op":"dispatch","key":{"k":<KEY>},"cases":{<value>:<TR>,...},"default":<TR>}   per-object branch by a feature
-#   {"op":"mask","region":<REGION>,"node":<NODE>}                       apply a sub-rule only inside a region
-#   {"op":"seq","steps":[<NODE>,...]}                                   do steps in order (step 2 sees step 1's result)
-#   {"op":"repeat","n":N,"node":<NODE>}
+# scene: { "K": <3-7>, "kinds":[shapes], "palette":[colours 1-9], "size":N or "sizes":[N..],
+#          "withCore":bool, "corePalette":[..], "ensureCores":[..], "holedMix":bool, "spreadHalves":bool }
+#   shapes: square plus Lshape triangle diamond Tshape notch frame ring ; colours 1blue 2red 3green 4yellow 5grey 6magenta 7orange 8cyan 9maroon
+#
+# rule AST nodes:
+#   {"op":"bind","name":"A","pick":"largest|smallest|unique_color|unique_shape"}   ← find the ANCHOR (depth!)
+#   {"op":"apply","sel":<SEL>,"transform":<TR>}
+#   {"op":"dispatch","key":{"k":<KEY>},"cases":{val:<TR>},"default":<TR>}          ← keep to ≤2 cases
+#   {"op":"mask","region":<REGION>,"node":<NODE>} | {"op":"seq","steps":[<NODE>..]}
 # SEL: {"s":"all"} {"s":"by_color","color":C} {"s":"by_size","cls":"small|large"} {"s":"by_kind","kind":K}
-#      {"s":"by_orientation","orient":"wide|tall|square"} {"s":"has_hole","holed":true} {"s":"largest"} {"s":"smallest"}
-#      {"s":"in_region","region":<REGION>}
-# TR: {"t":"identity"} {"t":"recolor","color":C} {"t":"recolor_core","color":C} {"t":"mirror_h"} {"t":"flip_v"}
-#     {"t":"rotate_90"} {"t":"rotate_180"} {"t":"outline"} {"t":"fill_hole"} {"t":"remove"} {"t":"fall","dir":"down|up|left|right"}
+#      {"s":"by_orientation","orient":"wide|tall|square"} {"s":"has_hole","holed":true} {"s":"largest"} {"s":"smallest"} {"s":"in_region","region":<REGION>}
+# TR (plain): {"t":"recolor","color":C} {"t":"recolor_core","color":C} {"t":"mirror_h"} {"t":"flip_v"} {"t":"rotate_90"}
+#      {"t":"rotate_180"} {"t":"outline"} {"t":"fill_hole"} {"t":"remove"} {"t":"fall","dir":"down|up|left|right"} {"t":"identity"}
+# TR (RELATIONAL — reference a bound anchor, this is the deep part):
+#      {"t":"recolor_to","ref":"A"}   every selected object takes anchor A's colour
+#      {"t":"copy_shape","ref":"A"}   every selected object MORPHS into anchor A's shape (keeps its own colour/place)
+#      {"t":"reflect_pos","ref":"A","axis":"h|v"}   move each object to its mirror position across anchor A
 # KEY: color core_color size_class shape_kind orientation has_hole size_rank
 # REGION: {"reg":"half","side":"left|right|top|bottom"} {"reg":"quadrant","q":"TL|TR|BL|BR"}
 #
-# Make the rule a GENUINE composition (≥2 nested ops) with a clear human-solvable logic, and design the scene so
-# the rule is visible and unambiguous (the relevant feature must VARY among objects).`;
+# AVOID degenerate ops: do NOT rotate_180/mirror a symmetric shape (square/diamond/plus) — no visible change.
+# Design the scene so the ANCHOR is UNAMBIGUOUS (e.g. for unique_color, exactly one object has a one-off colour;
+# for largest, give DISTINCT sizes) and the relevant features VARY. Use 4-5 objects.`;
 
 function selfTest() {
-  // a NOVEL composite rule not in any menu: in the left half mirror everything, then dispatch by size_rank
-  const prog = { idea: "left-half objects mirror; then the largest object becomes magenta, the smallest is removed",
-    scene: { K: 5, kinds: ["Lshape", "triangle", "square"], sizes: [2, 3, 4, 5, 3], palette: [2, 3, 4, 8], spreadHalves: true },
+  // a DEEP RELATIONAL rule: find the largest object (the anchor), then every object takes its colour (depth, not width)
+  const prog = { idea: "find the largest object; recolour every object to the largest one's colour",
+    scene: { K: 5, kinds: ["square"], sizes: [2, 3, 4, 5, 6], palette: [2, 3, 4, 6, 8] },
     rule: { op: "seq", steps: [
-      { op: "mask", region: { reg: "half", side: "left" }, node: { op: "apply", sel: { s: "all" }, transform: { t: "mirror_h" } } },
-      { op: "dispatch", key: { k: "size_rank" }, cases: { largest: { t: "recolor", color: 6 }, smallest: { t: "remove" } }, default: { t: "identity" } },
+      { op: "bind", name: "A", pick: "largest" },
+      { op: "apply", sel: { s: "all" }, transform: { t: "recolor_to", ref: "A" } },
     ] } };
   const t = compileProgram(prog, { seed: 3 });
   if (t.format !== "prodigy-task") throw new Error("compile failed");
