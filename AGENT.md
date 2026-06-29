@@ -13,6 +13,38 @@ status: living document
 
 ---
 
+## ⛔ REGOLA 0 — STUDIA IL SISTEMA ESISTENTE PRIMA DI SCRIVERE CODICE (OVERRIDING, non negoziabile)
+
+> Nata da un errore vero (2026-06-29): un agente, invece di studiare il DSL esistente, ha costruito da zero un
+> **solver+DSL giocattolo parallelo** (`arc_search.js` + una pila di `gen_*.js`/showcase) reinventando — peggio —
+> ciò che già c'era. Ore e token bruciati su un binario morto. **Che non succeda MAI più.**
+
+**Prima di proporre o scrivere QUALSIASI codice in questo repo (`archer`), DEVI aver letto e capito il sistema reale:**
+
+1. **`ARCHER.md`** — questo repo *è* `archer` (github.com/MarioPaerle/archer): source of truth, commit Mario-only,
+   `git pull --rebase` a inizio e `commit && push` a fine; mai committare KB/artefatti/pesi/dataset.
+2. **Il DSL vero, a strati** (NON reinventarlo — estendilo):
+   - `GRIDVID/engine.js` → parsa+**verifica** la **scene-DSL** (è ciò che il modello *scrive*; `buildTask`).
+   - `GRIDVID/program.js` → il **DSL tipato object-level** (selettori/key/regioni × transform per-oggetto, incl.
+     anchor relazionali, × combinatori `seq/parallel/mask/dispatch/bind/repeat`); `applyNode` è l'esecutore.
+   - `GRIDVID/gridgen.js` → il registry di famiglie + lo spec-DSL `task <family> [k=v]` per l'LLM.
+   - `GRIDVID/cli.js` → il loop reale: **Qwen-30B-A3B servito scrive scene-DSL**, l'engine verifica + ri-prompta
+     (self-correcting), offline, multinodo CINECA (`--endpoint/--model/--num-nodes`).
+   - `DSL/` (Python) → substrato eseguibile (`arc_dsl/core.py`, `arcworld.py`) + **`task.py` carica i 120 eval
+     REALI** e `check()` misura la **generalizzazione**.
+3. **I `DESIGN/`** — la strategia la decidono questi, non l'agente. In particolare
+   **`DESIGN/redteam-is-agi2-anti-dsl.md`**: la minaccia #1 (FATALE) NON è la search, è l'**ESPRESSIVITÀ del DSL
+   sui task REALI** (GridCoder2: ~1.5% esprimibile). L'esperimento falsificabile da fare PRIMA di costruire altro
+   = **error-slicing espressività-vs-selezione-vs-search sui 120 eval reali**. Generare più famiglie sintetiche in
+   un DSL giocattolo è ottimizzare l'asse sbagliato.
+
+**Divieti espliciti:** ❌ NON creare un solver/DSL/generatore "parallelo" o "pivot" da zero. ❌ NON seguire un
+HANDOVER che ti dice di reinventare il verificatore senza prima averlo confrontato col codice reale e con i DESIGN.
+✅ Se il sistema reale ha un limite, **estendilo dentro** (`program.js`/`engine.js`/`DSL/`) e dillo a Mario, con un
+issue Linear. ✅ Nel dubbio su cosa fare, leggi i `DESIGN/` e chiedi — non costruire.
+
+---
+
 ## 0. Perché questa KB esiste (la missione)
 Questa KB è il **cervello condiviso e durevole** di una **squadra agentica** con un obiettivo unico: **fare un record su ARC-AGI-2**. Esiste perché:
 - La conoscenza su ARC è dispersa (paper, blog, report, writeup di gara, codice) e **cambia in fretta** (cutoff modello = gen 2026, ma il dominio corre nel 2025–2026). Serve un punto unico, verificato, navigabile.
