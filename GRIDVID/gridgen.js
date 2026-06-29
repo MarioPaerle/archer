@@ -18,6 +18,8 @@ const V2 = require("./solver2.js");
 const G3 = require("./gen3.js");   // includes the best gen2 families
 const G4 = require("./gen4.js");
 const G5 = require("./gen5.js");
+const GD = require("./gen_deep.js");    // deep relational (anchor-based)
+const GL = require("./gen_logic.js");   // logical / IQ
 
 // ---------- the unified family registry: name → { build(rng), desc, params } ----------
 // `build` returns a full prodigy-task (or null). `params` documents the LLM-settable knobs (matched against the
@@ -47,7 +49,13 @@ const REG = {
   count_tally:     { build: G5.FAMILIES.count_tally,           desc: "output a line of (#objects) cells — counting", params: {} },
   count_majority:  { build: G5.FAMILIES.count_plurality,       desc: "output a block in the most-common object colour", params: {} },
   occlusion:       { build: G5.FAMILIES.occlusion,             desc: "remove the grey occluder, reconstruct the hidden part by symmetry", params: { axis: "h|v" } },
+  // LOGICAL / IQ (reasoning, not style transfer)
+  raven_matrix:    { build: GL.FAMILIES.raven_latin,           desc: "complete the 3×3 matrix so each row & column holds each colour once (Raven / Latin square)", params: {} },
+  count_difference:{ build: GL.FAMILIES.count_diff,            desc: "output the DIFFERENCE of the two object counts as a line of marks (arithmetic)", params: {} },
 };
+// DEEP RELATIONAL anchor families (find an anchor — largest/smallest/uniquely-coloured/odd-shaped/holed — then
+// every object depends on it). Fold them ALL in so ONE policy spans per-object, structural, relational AND logical.
+for (const k of Object.keys(GD.FAMILIES)) REG[k] = { build: rng => GD.buildTask(k, rng), desc: GD.FAMILIES[k].idea, params: {} };
 const FAMILIES = Object.keys(REG);
 
 // translate a requested param value → a keyword that must appear in the solver's rule text

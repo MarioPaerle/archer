@@ -202,11 +202,42 @@ function analogyPredict(inG, tr) {               // A|B|C panels → output = tr
   return applyGridTransform(sp.panels[2], tr);
 }
 
+// ---------- LOGICAL: Raven matrix / Latin-square completion (the classic IQ deduction) ----------
+function band(coords) {                          // cluster centroid coords into discrete lattice bands
+  const u = [...new Set(coords.map(x => Math.round(x)))].sort((a, b) => a - b), bands = [];
+  for (const v of u) { if (!bands.length || v - bands[bands.length - 1].max > 2) bands.push({ min: v, max: v }); else bands[bands.length - 1].max = v; }
+  return { n: bands.length, idx: x => { const xr = Math.round(x); for (let k = 0; k < bands.length; k++) if (xr >= bands[k].min - 1 && xr <= bands[k].max + 1) return k; return -1; } };
+}
+function latinComplete(inG) {                     // 3×3 lattice of coloured cells, one missing → fill it so every row & column holds each colour once
+  const objs = seg(inG); if (objs.length !== 8) return null;
+  const R = band(objs.map(o => o.cr)), C = band(objs.map(o => o.cc)); if (R.n !== 3 || C.n !== 3) return null;
+  const grid = Array.from({ length: 3 }, () => new Array(3).fill(null));
+  for (const o of objs) { const ri = R.idx(o.cr), ci = C.idx(o.cc); if (ri < 0 || ci < 0 || grid[ri][ci]) return null; grid[ri][ci] = o; }
+  let empty = null, cnt = 0; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (!grid[i][j]) { empty = [i, j]; cnt++; }
+  if (cnt !== 1) return null;
+  const [ri, ci] = empty, pal = [...new Set(objs.map(o => o.mainColor))]; if (pal.length !== 3) return null;
+  const rowC = new Set(), colC = new Set();
+  for (let j = 0; j < 3; j++) if (grid[ri][j]) rowC.add(grid[ri][j].mainColor);
+  for (let i = 0; i < 3; i++) if (grid[i][ci]) colC.add(grid[i][ci].mainColor);
+  const mr = pal.filter(c => !rowC.has(c)), mc = pal.filter(c => !colC.has(c));
+  if (mr.length !== 1 || mc.length !== 1 || mr[0] !== mc[0]) return null;   // Latin-consistent ⇒ uniquely determined
+  const rowObj = grid[ri].find(Boolean), colObj = [grid[0][ci], grid[1][ci], grid[2][ci]].find(Boolean), any = objs[0];
+  const out = inG.map(r => r.slice());
+  for (let a = 0; a < any.h; a++) for (let b = 0; b < any.w; b++) { const r = rowObj.r + a, c = colObj.c + b; if (r < out.length && c < out[0].length) out[r][c] = mr[0]; }
+  return out;
+}
+
 // ---------- counting / numerosity ----------
 const countObjs = g => seg(g).length;
 function tallyPredict(inG, color, vert) { const n = countObjs(inG); if (n < 1) return null; return vert ? Array.from({ length: n }, () => [color]) : [Array.from({ length: n }, () => color)]; }
 function pluralityColor(g) { const objs = seg(g), cnt = {}; for (const o of objs) cnt[o.mainColor] = (cnt[o.mainColor] || 0) + 1; const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]); if (!top.length || (top.length > 1 && top[0][1] === top[1][1])) return null; return +top[0][0]; }
 function blockPredict(inG, h, w) { const c = pluralityColor(inG); if (c == null) return null; return Array.from({ length: h }, () => new Array(w).fill(c)); }
+function countDiffPredict(inG, color, vert) {     // LOGICAL/arithmetic: |#colourA − #colourB| marks (scene has exactly 2 object colours)
+  const objs = seg(inG), cnt = {}; for (const o of objs) cnt[o.mainColor] = (cnt[o.mainColor] || 0) + 1;
+  const counts = Object.values(cnt); if (counts.length !== 2) return null;
+  const d = Math.abs(counts[0] - counts[1]); if (d < 1) return null;
+  return vert ? Array.from({ length: d }, () => [color]) : [Array.from({ length: d }, () => color)];
+}
 
 // ---------- occlusion: a grey (5) occluder hides part of a symmetric figure → fill by mirror ----------
 const OCC = 5;
@@ -257,11 +288,13 @@ function fitAll(train) {
   { const sp0 = splitPanels(train[0][0]); if (sp0 && sp0.panels.length === 3) { const tr = inferGridTransform(sp0.panels[0], sp0.panels[1]); if (tr) add(`analogy A:B::C:? — apply ${tr.t} (inferred from A→B) to C`, 4, inG => analogyPredict(inG, tr)); } }
   // COUNTING: output a tally line of length = #objects, or a block in the plurality colour
   { const o0 = train[0][1]; const flat = o0.flat(), cols = new Set(flat.filter(x => x)); const uni = cols.size === 1 ? [...cols][0] : null;
-    if (uni != null && o0.length === 1) add(`output a row of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, false));
-    if (uni != null && o0[0].length === 1) add(`output a column of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, true));
+    if (uni != null && o0.length === 1) { add(`output a row of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, false)); add(`output the DIFFERENCE of the two object counts as a row of ${COLNAME[uni]} marks`, 4, inG => countDiffPredict(inG, uni, false)); }
+    if (uni != null && o0[0].length === 1) { add(`output a column of (#objects) ${COLNAME[uni]} cells`, 3, inG => tallyPredict(inG, uni, true)); add(`output the DIFFERENCE of the two object counts as a column of ${COLNAME[uni]} marks`, 4, inG => countDiffPredict(inG, uni, true)); }
     if (uni != null && o0.length > 1 && o0[0].length > 1) add(`output a ${o0.length}×${o0[0].length} block in the most-common object colour`, 3, inG => blockPredict(inG, o0.length, o0[0].length)); }
   // OCCLUSION: remove the grey occluder, reconstruct the hidden cells by symmetry
   for (const axis of ["h", "v"]) add(`remove the occluder; fill the hidden cells by ${axis === "h" ? "left-right" : "top-bottom"} symmetry`, 4, inG => deoccludePredict(inG, axis));
+  // LOGICAL: complete the 3×3 Latin-square matrix (Raven-style deduction)
+  add("complete the matrix: fill the missing cell so each row & column holds each colour once", 4, latinComplete);
   // multi-step: a structural op THEN a group rule
   const STRUCT = [["gravity down", inG => gravity(inG, "down")], ["denoise", denoise], ["fill holes", fillHoles], ["keep largest", inG => keepExtreme(inG, "largest")]];
   for (const [sname, sfn] of STRUCT) {
