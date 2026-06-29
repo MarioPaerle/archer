@@ -142,41 +142,76 @@ function applyProgram(prog, grid) {
   for (const step of prog) { g = step.fn(g); if (!g) return null; }
   return g;
 }
+
+/* fitColorMap: the learned, cross-pair UNDER-DETERMINATION op. Find a single global colour map M that
+ * recolours every intermediate grid into its output (same shape, SAME nonzero mask — recolour only),
+ * consistent across ALL pairs and non-identity. M is fit JOINTLY over the pairs, so it can only be pinned
+ * by observing each source colour somewhere — split colours across pairs ⇒ ≥3 observations required.
+ * Returns { map, srcSeen } or null. */
+function fitColorMap(grids, outs) {
+  const M = {}; const srcSeen = new Set();
+  for (let p = 0; p < grids.length; p++) {
+    const a = grids[p], b = outs[p];
+    if (a.length !== b.length || a[0].length !== b[0].length) return null;
+    for (let r = 0; r < a.length; r++) for (let c = 0; c < a[0].length; c++) {
+      const x = a[r][c], y = b[r][c];
+      if ((x === 0) !== (y === 0)) return null;     // a colour map must preserve the figure/ground mask
+      if (x === 0) continue;
+      srcSeen.add(x);
+      if (x in M) { if (M[x] !== y) return null; } else M[x] = y;
+    }
+  }
+  if (!srcSeen.size) return null;
+  if ([...srcSeen].every(x => M[x] === x)) return null;   // identity ⇒ not a real op
+  return { map: M, srcSeen };
+}
+function cmapStep(M) {
+  return { label: "colormap:" + JSON.stringify(M), map: M, fn: g => g.map(r => r.map(x => (x && x in M) ? M[x] : x)) };
+}
+
+/* solveTrain — level-synchronous BFS over the TUPLE of (one intermediate grid per train pair). Goal = every
+ * intermediate equals its train OUTPUT. We expand whole levels so that at the minimal depth we collect ALL
+ * solving programs (needed for the uniqueness check). With allowColorMap, every frontier may additionally
+ * close via a learned colormap terminal step (one extra depth) — the certifiable under-determination route. */
 function solveTrain(train, opts = {}) {
-  const maxDepth = opts.maxDepth ?? 3, maxStates = opts.maxStates ?? 200000;
+  const maxDepth = opts.maxDepth ?? 3, maxStates = opts.maxStates ?? 200000, allowColorMap = opts.allowColorMap ?? false;
   const ins = train.map(t => t.in), outs = train.map(t => t.out);
   const goal = grids => grids.every((g, i) => eqG(g, outs[i]));
-  // a "state" = { grids:[…per pair…], prog:[step…] }
-  let level = [{ grids: ins, prog: [] }];
+  const collect = states => { const progs = [], pk = new Set(); for (const s of states) { const lab = s.prog.map(x => x.label).join(">"); if (!pk.has(lab)) { pk.add(lab); progs.push(s.prog); } } return progs; };
+  // colormap solutions reachable from a frontier at distance d → depth d+1
+  const cmapGoals = level => !allowColorMap ? [] : level.map(st => { const fit = fitColorMap(st.grids, outs); return fit ? { grids: outs, prog: st.prog.concat([cmapStep(fit.map)]) } : null; }).filter(Boolean);
+
+  let prev = null, cur = [{ grids: ins, prog: [] }];
   const seen = new Set([keyTuple(ins)]);
   let nStates = 1;
-  if (goal(ins)) return { found: true, depth: 0, programs: [[]], applyProgram };
-  for (let depth = 1; depth <= maxDepth; depth++) {
-    const next = [], goalsHere = [];
-    for (const st of level) {
-      const variants = buildVariants(st.grids);
-      for (const v of variants) {
+  for (let depth = 0; depth <= maxDepth; depth++) {
+    // goals AT depth: direct goals among distance-`depth` states + colormap closures from distance-(depth-1)
+    const direct = cur.filter(st => goal(st.grids));
+    const viaMap = (depth >= 1 && prev) ? cmapGoals(prev) : (depth === 0 ? [] : []);
+    if (direct.length || viaMap.length) return { found: true, depth, programs: collect(direct.concat(viaMap)), applyProgram };
+    if (depth === maxDepth) break;
+    // expand cur (distance depth) → next (distance depth+1)
+    const next = [];
+    for (const st of cur) {
+      for (const v of buildVariants(st.grids)) {
         const ng = []; let ok = true;
         for (const g of st.grids) { const r = v.fn(g); if (!r) { ok = false; break; } ng.push(r); }
         if (!ok) continue;
         const k = keyTuple(ng);
         if (seen.has(k)) continue;                // dedup: never revisit an identical intermediate tuple
         seen.add(k); nStates++;
-        const nst = { grids: ng, prog: st.prog.concat([v]) };
-        if (goal(ng)) goalsHere.push(nst);
-        else next.push(nst);
-        if (nStates > maxStates) { /* budget hit — return what we have at this level */ break; }
+        next.push({ grids: ng, prog: st.prog.concat([v]) });
+        if (nStates > maxStates) break;
       }
       if (nStates > maxStates) break;
     }
-    if (goalsHere.length) {
-      // minimal depth reached → collect ALL solving programs here (dedup by label sequence)
-      const progs = [], pk = new Set();
-      for (const g of goalsHere) { const lab = g.prog.map(s => s.label).join(">"); if (!pk.has(lab)) { pk.add(lab); progs.push(g.prog); } }
-      return { found: true, depth, programs: progs, applyProgram };
+    prev = cur; cur = next;
+    if (!cur.length || nStates > maxStates) {
+      // last chance: a colormap closure from the final frontier (depth+1)
+      const tail = cmapGoals(prev);
+      if (tail.length && depth + 1 <= maxDepth) return { found: true, depth: depth + 1, programs: collect(tail), applyProgram };
+      break;
     }
-    level = next;
-    if (!level.length || nStates > maxStates) break;
   }
   return { found: false, depth: Infinity, programs: [], applyProgram };
 }
@@ -187,16 +222,31 @@ function trainPairsOf(task) {                     // {examples:[{in:[grid],out:[
 }
 function testOf(task) { return { in: task.in[0], out: task.out ? task.out[0] : null }; }
 
+/* colorsOfGrid: nonzero colours present in one grid. */
+const colorsOfGrid = g => { const s = new Set(); for (const row of g) for (const x of row) if (x) s.add(x); return s; };
+/* covers: a colormap-terminal program is only DETERMINED on the test if every nonzero colour the test grid
+ * feeds into the map was constrained by the train (seen as a source). An unseen test colour ⇒ the rule never
+ * specified its image ⇒ genuinely ambiguous (this is real under-determination, must be rejected, not faked). */
+function programCoversTest(prog, testIn) {
+  const last = prog[prog.length - 1];
+  if (!last || !last.map) return true;                       // non-colormap programs are fully determined
+  let g = testIn; for (let i = 0; i < prog.length - 1; i++) { g = prog[i].fn(g); if (!g) return false; }
+  for (const c of colorsOfGrid(g)) if (!(c in last.map)) return false;
+  return true;
+}
+
 /* solveTask: search the train, then PREDICT the test. Returns the determined prediction + whether it is unique. */
 function solveTask(task, opts = {}) {
+  const o = { allowColorMap: true, ...opts };
   const train = trainPairsOf(task), test = testOf(task);
-  const res = solveTrain(train, opts);
+  const res = solveTrain(train, o);
   if (!res.found) return { solvable: false, depth: Infinity, unique: false, prediction: null, programs: 0 };
+  const covered = res.programs.every(p => programCoversTest(p, test.in));
   const preds = res.programs.map(p => applyProgram(p, test.in)).filter(Boolean);
   const distinct = new Set(preds.map(key));
   return {
     solvable: true, depth: res.depth, programs: res.programs.length,
-    unique: distinct.size === 1, prediction: preds[0] || null,
+    unique: covered && distinct.size === 1, prediction: preds[0] || null,
     programLabels: res.programs.map(p => p.map(s => s.label).join(" |> ")),
   };
 }
@@ -204,12 +254,13 @@ function solveTask(task, opts = {}) {
 /* obsNeeded: the smallest k such that searching on only k train pairs pins a program that ALSO fits the
  * remaining pairs. k≥3 ⇒ genuinely under-determined (no 1 or 2 pairs reveal the rule). */
 function obsNeeded(task, opts = {}) {
+  const o = { allowColorMap: true, ...opts };
   const train = trainPairsOf(task);
-  const full = solveTrain(train, opts);
+  const full = solveTrain(train, o);
   if (!full.found) return Infinity;
   for (let k = 1; k <= train.length; k++) {
     const sub = train.slice(0, k);
-    const r = solveTrain(sub, { ...opts, maxDepth: full.depth });
+    const r = solveTrain(sub, { ...o, maxDepth: full.depth });
     if (!r.found) continue;
     // does ANY program found on the first k pairs reproduce ALL pairs at depth ≤ full.depth?
     const pins = r.programs.some(p => train.every(t => { const o = applyProgram(p, t.in); return o && eqG(o, t.out); }));
