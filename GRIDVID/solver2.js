@@ -208,23 +208,35 @@ function band(coords) {                          // cluster centroid coords into
   for (const v of u) { if (!bands.length || v - bands[bands.length - 1].max > 2) bands.push({ min: v, max: v }); else bands[bands.length - 1].max = v; }
   return { n: bands.length, idx: x => { const xr = Math.round(x); for (let k = 0; k < bands.length; k++) if (xr >= bands[k].min - 1 && xr <= bands[k].max + 1) return k; return -1; } };
 }
-function latinComplete(inG) {                     // 3×3 lattice of coloured cells, one missing → fill it so every row & column holds each colour once
+const cellPattern = o => o.loc.map(r => r.map(x => x ? 1 : 0).join("")).join("|");
+function matrixComplete(inG) {                    // 3×3 reasoning matrix, one cell missing → DEDUCE it from the
+  // row/column constraint. The distributed attribute can be COLOUR or SHAPE (each row & column holds each value
+  // once); the answer is found by intersecting the row and column, then copied from the cell that already has it.
   const objs = seg(inG); if (objs.length !== 8) return null;
   const R = band(objs.map(o => o.cr)), C = band(objs.map(o => o.cc)); if (R.n !== 3 || C.n !== 3) return null;
   const grid = Array.from({ length: 3 }, () => new Array(3).fill(null));
   for (const o of objs) { const ri = R.idx(o.cr), ci = C.idx(o.cc); if (ri < 0 || ci < 0 || grid[ri][ci]) return null; grid[ri][ci] = o; }
   let empty = null, cnt = 0; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (!grid[i][j]) { empty = [i, j]; cnt++; }
   if (cnt !== 1) return null;
-  const [ri, ci] = empty, pal = [...new Set(objs.map(o => o.mainColor))]; if (pal.length !== 3) return null;
-  const rowC = new Set(), colC = new Set();
-  for (let j = 0; j < 3; j++) if (grid[ri][j]) rowC.add(grid[ri][j].mainColor);
-  for (let i = 0; i < 3; i++) if (grid[i][ci]) colC.add(grid[i][ci].mainColor);
-  const mr = pal.filter(c => !rowC.has(c)), mc = pal.filter(c => !colC.has(c));
-  if (mr.length !== 1 || mc.length !== 1 || mr[0] !== mc[0]) return null;   // Latin-consistent ⇒ uniquely determined
-  const rowObj = grid[ri].find(Boolean), colObj = [grid[0][ci], grid[1][ci], grid[2][ci]].find(Boolean), any = objs[0];
-  const out = inG.map(r => r.slice());
-  for (let a = 0; a < any.h; a++) for (let b = 0; b < any.w; b++) { const r = rowObj.r + a, c = colObj.c + b; if (r < out.length && c < out[0].length) out[r][c] = mr[0]; }
-  return out;
+  const [ri, ci] = empty;
+  for (const val of [o => o.mainColor, o => cellPattern(o)]) {      // try COLOUR-distribute, then SHAPE-distribute
+    const distinct = [...new Set(objs.map(val))]; if (distinct.length !== 3) continue;
+    let latin = true;
+    for (let i = 0; i < 3; i++) { const v = []; for (let j = 0; j < 3; j++) if (grid[i][j]) v.push(val(grid[i][j])); if (new Set(v).size !== v.length) latin = false; }
+    for (let j = 0; j < 3; j++) { const v = []; for (let i = 0; i < 3; i++) if (grid[i][j]) v.push(val(grid[i][j])); if (new Set(v).size !== v.length) latin = false; }
+    if (!latin) continue;
+    const rowV = new Set(), colV = new Set();
+    for (let j = 0; j < 3; j++) if (grid[ri][j]) rowV.add(val(grid[ri][j]));
+    for (let i = 0; i < 3; i++) if (grid[i][ci]) colV.add(val(grid[i][ci]));
+    const mr = distinct.filter(v => !rowV.has(v)), mc = distinct.filter(v => !colV.has(v));
+    if (mr.length !== 1 || mc.length !== 1 || mr[0] !== mc[0]) continue;
+    const donor = objs.find(o => val(o) === mr[0]); if (!donor) continue;   // the missing cell looks like this donor
+    const rowObj = grid[ri].find(Boolean), colObj = [grid[0][ci], grid[1][ci], grid[2][ci]].find(Boolean);
+    const out = inG.map(r => r.slice());
+    for (let a = 0; a < donor.h; a++) for (let b = 0; b < donor.w; b++) if (donor.loc[a][b]) { const r = rowObj.r + a, c = colObj.c + b; if (r < out.length && c < out[0].length) out[r][c] = donor.loc[a][b]; }
+    return out;
+  }
+  return null;
 }
 
 // ---------- counting / numerosity ----------
@@ -293,8 +305,8 @@ function fitAll(train) {
     if (uni != null && o0.length > 1 && o0[0].length > 1) add(`output a ${o0.length}×${o0[0].length} block in the most-common object colour`, 3, inG => blockPredict(inG, o0.length, o0[0].length)); }
   // OCCLUSION: remove the grey occluder, reconstruct the hidden cells by symmetry
   for (const axis of ["h", "v"]) add(`remove the occluder; fill the hidden cells by ${axis === "h" ? "left-right" : "top-bottom"} symmetry`, 4, inG => deoccludePredict(inG, axis));
-  // LOGICAL: complete the 3×3 Latin-square matrix (Raven-style deduction)
-  add("complete the matrix: fill the missing cell so each row & column holds each colour once", 4, latinComplete);
+  // LOGICAL: complete the 3×3 reasoning matrix (Raven-style deduction over colour OR shape)
+  add("complete the matrix: deduce the missing cell so each row & column holds each value once", 4, matrixComplete);
   // multi-step: a structural op THEN a group rule
   const STRUCT = [["gravity down", inG => gravity(inG, "down")], ["denoise", denoise], ["fill holes", fillHoles], ["keep largest", inG => keepExtreme(inG, "largest")]];
   for (const [sname, sfn] of STRUCT) {

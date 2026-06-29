@@ -20,6 +20,7 @@ const G4 = require("./gen4.js");
 const G5 = require("./gen5.js");
 const GD = require("./gen_deep.js");    // deep relational (anchor-based)
 const GL = require("./gen_logic.js");   // logical / IQ
+const GIQ = require("./gen_iq.js");      // matrix-reasoning (Raven, colour & shape)
 
 // ---------- the unified family registry: name → { build(rng), desc, params } ----------
 // `build` returns a full prodigy-task (or null). `params` documents the LLM-settable knobs (matched against the
@@ -50,7 +51,8 @@ const REG = {
   count_majority:  { build: G5.FAMILIES.count_plurality,       desc: "output a block in the most-common object colour", params: {} },
   occlusion:       { build: G5.FAMILIES.occlusion,             desc: "remove the grey occluder, reconstruct the hidden part by symmetry", params: { axis: "h|v" } },
   // LOGICAL / IQ (reasoning, not style transfer)
-  raven_matrix:    { build: GL.FAMILIES.raven_latin,           desc: "complete the 3×3 matrix so each row & column holds each colour once (Raven / Latin square)", params: {} },
+  raven_matrix:    { build: GIQ.FAMILIES.matrix_color,         desc: "complete the 3×3 matrix so each row & column holds each COLOUR once (Raven / Latin square deduction)", params: {} },
+  raven_shape:     { build: GIQ.FAMILIES.matrix_shape,         desc: "complete the 3×3 matrix so each row & column holds each SHAPE once — deduce the missing shape (Raven)", params: {} },
   count_difference:{ build: GL.FAMILIES.count_diff,            desc: "output the DIFFERENCE of the two object counts as a line of marks (arithmetic)", params: {} },
 };
 // DEEP RELATIONAL anchor families (find an anchor — largest/smallest/uniquely-coloured/odd-shaped/holed — then
