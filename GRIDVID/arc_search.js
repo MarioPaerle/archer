@@ -101,6 +101,14 @@ function applyLegend(g) {
   for (let r = 0; r < o.length; r++) for (let c = d + 1; c < o[0].length; c++) { const x = o[r][c]; if (x && x in map) o[r][c] = map[x]; }
   return o;
 }
+/* splitTwoPanels — for boolean/set-logic: a full-height divider splits the grid into two equal-width panels. */
+function splitTwoPanels(g) {
+  const d = findDivider(g); if (d < 0) return null;
+  const left = [], right = [];
+  for (const row of g) { left.push(row.slice(0, d)); right.push(row.slice(d + 1)); }
+  if (!left[0].length || left[0].length !== right[0].length) return null;
+  return [left, right];
+}
 
 // ---------------- the DSL: each op maps grid→grid|null; parameterized ops expand against the live grids ----------------
 // op.variants(grids) → [{ label, fn }]   (grids = the CURRENT intermediate grids across all train pairs)
@@ -145,6 +153,42 @@ const OPS = [
       for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
         const a = cs[i], b = cs[j];
         out.push({ label: `swap:${a},${b}`, fn: safe(g => g.map(r => r.map(x => x === a ? b : x === b ? a : x))) });
+      }
+      return out;
+    },
+  },
+  // ---- counting / number (axis E): count objects of a colour, render the count as a bar ----
+  {
+    label: "count_bar",
+    variants: grids => {
+      const out = [];
+      const cs = new Set(); for (const g of grids) for (const o of seg(g)) cs.add(o.mainColor);
+      for (const c of cs) for (const orient of ["row", "col"]) {
+        out.push({ label: `count_bar:${c},${orient}`, fn: safe(g => {
+          const n = seg(g).filter(o => o.mainColor === c).length; if (n < 1) return null;
+          return orient === "row" ? [new Array(n).fill(c)] : Array.from({ length: n }, () => [c]);
+        }) });
+      }
+      return out;
+    },
+  },
+  // ---- set logic / boolean (axis E): cellwise AND/OR/XOR/diff of two divider-split panels ----
+  {
+    label: "bool_combine",
+    variants: grids => {
+      if (!grids.some(g => findDivider(g) >= 0)) return [];      // only when a divider splits two panels
+      const out = []; const cs = colorsOf(grids);
+      for (const op of ["and", "or", "xor", "diff"]) for (const col of cs) {
+        out.push({ label: `bool:${op},${col}`, fn: safe(g => {
+          const p = splitTwoPanels(g); if (!p) return null;
+          const [A, B] = p, h = A.length, w = A[0].length, o = Array.from({ length: h }, () => new Array(w).fill(0));
+          for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+            const a = A[r][c] ? 1 : 0, b = B[r][c] ? 1 : 0;
+            const v = op === "and" ? (a && b) : op === "or" ? (a || b) : op === "xor" ? (a ^ b) : (a && !b);
+            if (v) o[r][c] = col;
+          }
+          return o;
+        }) });
       }
       return out;
     },
