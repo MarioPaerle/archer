@@ -19,8 +19,13 @@ const eqG = (a, b) => a.length === b.length && a[0].length === b[0].length && a.
 function gridFrom(h, w, objs) { const g = blank(h, w); for (const o of objs) for (let i = 0; i < o.loc.length; i++) for (let j = 0; j < o.loc[0].length; j++) { const v = o.loc[i][j]; if (v && o.r + i >= 0 && o.c + j >= 0 && o.r + i < h && o.c + j < w) g[o.r + i][o.c + j] = v; } return g; }
 function makeRng(seed) { let s = seed >>> 0 || 1; return () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
 
-// prefix ops MUST preserve every object (no deletion) so all source colours survive into the colormap step
-const grav = A._h.gravity;
+// prefix ops MUST preserve every object & its colour (no deletion) so all source colours survive into the
+// colormap step. NOTE the 4 pure-geometry ops form the dihedral group D4 — composing TWO of them collapses
+// to a SINGLE rotation/flip, which the search correctly re-derives at depth-1 → the task becomes depth-2 →
+// rejected as too-easy. So a non-collapsing prefix needs a NON-GROUP op (gravity / fill_holes / outline /
+// complete_sym). We include all of them so the corpus isn't all-gravity.
+const grav = A._h.gravity, outl = A._h.outlineLoc;
+function gridFromObjs(g, objs) { return gridFrom(H(g), W(g), objs); }
 const PREFIX_STEPS = [
   { label: "flipH", fn: g => g.map(r => r.slice().reverse()) },
   { label: "flipV", fn: g => g.slice().reverse().map(r => r.slice()) },
@@ -29,6 +34,10 @@ const PREFIX_STEPS = [
   { label: "gravity_down", fn: g => grav(g, "down") },
   { label: "gravity_left", fn: g => grav(g, "left") },
   { label: "gravity_right", fn: g => grav(g, "right") },
+  { label: "fill_holes", fn: g => { const o = seg(g); if (!o.some(x => x.hasHole)) return null; for (const x of o) if (x.hasHole) x.loc = x.loc.map(r => r.map(c => c || x.mainColor)); return gridFromObjs(g, o); } },
+  { label: "outline_all", fn: g => { const o = seg(g); for (const x of o) x.loc = outl(x.loc); return gridFromObjs(g, o); } },
+  { label: "complete_sym_h", fn: g => { const m = g.map(r => r.slice().reverse()); return g.map((r, i) => r.map((x, j) => x || m[i][j])); } },
+  { label: "complete_sym_v", fn: g => { const m = g.slice().reverse().map(r => r.slice()); return g.map((r, i) => r.map((x, j) => x || m[i][j])); } },
 ];
 function safe(fn) { return g => { try { const r = fn(g); return r && r.length && r[0].length ? r : null; } catch { return null; } }; }
 function samplePrefix(rng) {                       // length-2, two DISTINCT ops (depth-1 collapses are rejected by the search anyway)
@@ -42,7 +51,12 @@ function samplePrefix(rng) {                       // length-2, two DISTINCT ops
 function sceneWithColors(rng, h, w, colors) {
   const ri = n => Math.floor(rng() * n);
   const g = blank(h, w); let placed = 0, tries = 0; const want = colors.length;
-  const shapes = [[[1]], [[1, 1]], [[1], [1]], [[1, 1], [1, 0]], [[1, 1], [1, 1]], [[1, 1, 1]]];
+  const shapes = [
+    [[1, 1], [1, 0]], [[1, 1], [1, 1]], [[1, 1, 1]], [[1], [1], [1]],
+    [[1, 1, 1], [1, 0, 1], [1, 1, 1]],                 // frame (has a hole → fill_holes / outline bite)
+    [[0, 1, 0], [1, 1, 1], [0, 1, 0]],                 // plus
+    [[1, 1, 1], [1, 1, 1]], [[1, 1], [1, 1], [1, 1]],  // solid blocks (outline bites)
+  ];
   while (placed < want && tries < 600) {
     tries++; const mask = shapes[ri(shapes.length)]; const rh = mask.length, rw = mask[0].length;
     const r0 = ri(h - rh + 1), c0 = ri(w - rw + 1);
@@ -58,7 +72,7 @@ function sceneWithColors(rng, h, w, colors) {
 
 const PALETTE = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 function genTask(rng, opts = {}) {
-  const h = opts.h ?? 8, w = opts.w ?? 8;
+  const h = opts.h ?? 10, w = opts.w ?? 10;
   // 3 source colours, each mapped to a DISTINCT target colour not colliding with sources
   const pool = PALETTE.slice().sort(() => rng() - 0.5);
   const src = pool.slice(0, 3), tgt = pool.slice(3, 6);
