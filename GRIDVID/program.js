@@ -107,6 +107,7 @@ function resolveRef(pick, scene) {
   else if (pick === "smallest") { const m = Math.min(...objs.map(area)), k = objs.filter(x => area(x) === m); o = k.length === 1 ? k[0] : null; }
   else if (pick === "unique_color") { const c = {}; objs.forEach(x => c[x.color] = (c[x.color] || 0) + 1); const u = objs.filter(x => c[x.color] === 1); o = u.length === 1 ? u[0] : null; }
   else if (pick === "unique_shape") { const c = {}; objs.forEach(x => c[sigOf(x)] = (c[sigOf(x)] || 0) + 1); const u = objs.filter(x => c[sigOf(x)] === 1); o = u.length === 1 ? u[0] : null; }
+  else if (pick === "holed") { const u = objs.filter(x => HOLED.has(x.kind)); o = u.length === 1 ? u[0] : null; }
   if (!o) return null;
   const [h, w] = bbox(o.cells);
   return { color: o.color, core: o.core, cells: o.cells.map(c => c.slice()), kind: o.kind, cr: o.r + (h - 1) / 2, cc: o.c + (w - 1) / 2 };

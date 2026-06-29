@@ -130,13 +130,32 @@ function connectPairs(inG) {
 function completeSym(inG, axis) { const m = axis === "h" ? inG.map(r => r.slice().reverse()) : inG.slice().reverse().map(r => r.slice()); return inG.map((row, r) => row.map((x, c) => x || m[r][c])); }
 function recolorAll(inG, c) { return inG.map(r => r.map(x => x ? c : 0)); }
 function extremeObj(objs, which) { if (objs.length < 2) return null; const ext = which === "largest" ? Math.max(...objs.map(o => o.area)) : Math.min(...objs.map(o => o.area)); const k = objs.filter(o => o.area === ext); return k.length === 1 ? k[0] : null; }
-function morphToExtreme(inG, which) {             // RELATIONAL/depth: every object morphs into the largest/smallest object's SHAPE (keeps its own colour & position)
-  const objs = seg(inG), anchor = extremeObj(objs, which); if (!anchor) return null;
-  const cells = []; for (let i = 0; i < anchor.h; i++) for (let j = 0; j < anchor.w; j++) if (anchor.loc[i][j]) cells.push([i, j]);
+const silhStr = o => o.loc.map(r => r.map(x => x ? 1 : 0).join("")).join("|");
+// resolve the rule's ANCHOR object — the variety of relational rules lives HERE, not just "largest"
+function resolveAnchor(objs, pick) {
+  if (objs.length < 2) return null;
+  if (pick === "largest" || pick === "smallest") return extremeObj(objs, pick);
+  if (pick === "unique_color") { const c = {}; objs.forEach(o => c[o.mainColor] = (c[o.mainColor] || 0) + 1); const u = objs.filter(o => c[o.mainColor] === 1); return u.length === 1 ? u[0] : null; }
+  if (pick === "unique_shape") { const c = {}; objs.forEach(o => c[silhStr(o)] = (c[silhStr(o)] || 0) + 1); const u = objs.filter(o => c[silhStr(o)] === 1); return u.length === 1 ? u[0] : null; }
+  if (pick === "holed") { const u = objs.filter(o => o.hasHole); return u.length === 1 ? u[0] : null; }
+  return null;
+}
+const ANCHORS = ["largest", "smallest", "unique_color", "unique_shape", "holed"];
+const anchorText = { largest: "largest", smallest: "smallest", unique_color: "uniquely-coloured", unique_shape: "odd-shaped", holed: "holed" };
+function recolorToAnchor(inG, pick) {             // every object takes the anchor's colour
+  const objs = seg(inG), a = resolveAnchor(objs, pick); if (!a) return null;
+  const out = blank(inG.length, inG[0].length);
+  for (const o of objs) for (let i = 0; i < o.h; i++) for (let j = 0; j < o.w; j++) if (o.loc[i][j]) out[o.r + i][o.c + j] = a.mainColor;
+  return out;
+}
+function morphToAnchor(inG, pick) {               // every object morphs into the anchor's SHAPE (keeps its own colour & position)
+  const objs = seg(inG), a = resolveAnchor(objs, pick); if (!a) return null;
+  const cells = []; for (let i = 0; i < a.h; i++) for (let j = 0; j < a.w; j++) if (a.loc[i][j]) cells.push([i, j]);
   const out = blank(inG.length, inG[0].length);
   for (const o of objs) for (const [i, j] of cells) { const r = o.r + i, c = o.c + j; if (r < inG.length && c < inG[0].length) out[r][c] = o.mainColor; }
   return out;
 }
+function morphToExtreme(inG, which) { return morphToAnchor(inG, which); }
 function recolorToRef(inG, mode) {                // recolour ALL objects to a colour read from a reference object
   const objs = seg(inG); if (objs.length < 2) return null; let ref;
   if (mode === "largest" || mode === "smallest") { const e = extremeObj(objs, mode); if (!e) return null; ref = e.mainColor; }
@@ -211,12 +230,13 @@ function fitAll(train) {
   // recolor everything one colour
   const rc = deriveRecolorAll(train); if (rc != null) add(`recolour every object ${COLNAME[rc]}`, 1, inG => recolorAll(inG, rc));
   // RELATIONAL: recolour every object to the colour of the largest / of the majority (must read a reference object)
-  add("recolour every object to the colour of the largest object", 3, inG => recolorToRef(inG, "largest"));
-  add("recolour every object to the colour of the smallest object", 3, inG => recolorToRef(inG, "smallest"));
   add("recolour every object to the majority colour", 3, inG => recolorToRef(inG, "majority"));
-  // RELATIONAL/depth: every object morphs into the largest / smallest object's SHAPE (keeps its own colour)
-  add("every object morphs into the shape of the largest object", 3, inG => morphToExtreme(inG, "largest"));
-  add("every object morphs into the shape of the smallest object", 3, inG => morphToExtreme(inG, "smallest"));
+  // RELATIONAL/depth: find an ANCHOR object, then every object DEPENDS on it (takes its colour, or morphs into
+  // its shape). The anchor can be the largest/smallest/uniquely-coloured/odd-shaped/holed one — that's the variety.
+  for (const pick of ANCHORS) {
+    add(`recolour every object to the colour of the ${anchorText[pick]} object`, 3, inG => recolorToAnchor(inG, pick));
+    add(`every object morphs into the shape of the ${anchorText[pick]} object`, 3, inG => morphToAnchor(inG, pick));
+  }
   // structural (param-free)
   for (const dir of ["down", "up", "left", "right"]) add(`gravity ${dir} (everything settles)`, 2, inG => gravity(inG, dir));
   add("fill every hole solid", 2, fillHoles);
