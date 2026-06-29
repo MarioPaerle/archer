@@ -139,7 +139,7 @@ function morphToExtreme(inG, which) {             // RELATIONAL/depth: every obj
 }
 function recolorToRef(inG, mode) {                // recolour ALL objects to a colour read from a reference object
   const objs = seg(inG); if (objs.length < 2) return null; let ref;
-  if (mode === "largest") { const mx = Math.max(...objs.map(o => o.area)), k = objs.filter(o => o.area === mx); if (k.length !== 1) return null; ref = k[0].mainColor; }
+  if (mode === "largest" || mode === "smallest") { const e = extremeObj(objs, mode); if (!e) return null; ref = e.mainColor; }
   else { const cnt = {}; for (const o of objs) cnt[o.mainColor] = (cnt[o.mainColor] || 0) + 1; const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]); if (top.length < 2 || top[0][1] === top[1][1]) return null; ref = +top[0][0]; }
   const out = blank(inG.length, inG[0].length); for (const o of objs) for (let i = 0; i < o.h; i++) for (let j = 0; j < o.w; j++) if (o.loc[i][j]) out[o.r + i][o.c + j] = ref; return out;
 }
@@ -212,6 +212,7 @@ function fitAll(train) {
   const rc = deriveRecolorAll(train); if (rc != null) add(`recolour every object ${COLNAME[rc]}`, 1, inG => recolorAll(inG, rc));
   // RELATIONAL: recolour every object to the colour of the largest / of the majority (must read a reference object)
   add("recolour every object to the colour of the largest object", 3, inG => recolorToRef(inG, "largest"));
+  add("recolour every object to the colour of the smallest object", 3, inG => recolorToRef(inG, "smallest"));
   add("recolour every object to the majority colour", 3, inG => recolorToRef(inG, "majority"));
   // RELATIONAL/depth: every object morphs into the largest / smallest object's SHAPE (keeps its own colour)
   add("every object morphs into the shape of the largest object", 3, inG => morphToExtreme(inG, "largest"));
