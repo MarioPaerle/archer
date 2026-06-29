@@ -9,6 +9,7 @@ const path = require("path");
 const G = require("./gen_search.js");
 const U = require("./gen_underdetermined.js");
 const L = require("./gen_legend.js");
+const C = require("./gen_compositional.js");
 const A = require("./arc_search.js");
 
 const PAL = ["#000000", "#1E93FF", "#F93C31", "#4FCC30", "#FFDC00", "#999999", "#E53AA3", "#FF851B", "#87D8F1", "#921231"];
@@ -31,7 +32,12 @@ function card(idx, head, badge, t, predDepth) {
 
 function build(n, depth, seed, mode) {
   let r, cards, lead, title;
-  if (mode === "legend") {
+  if (mode === "mix") {
+    r = C.generate(n, { seed });
+    title = "gen_compositional — multiple INTERACTING rules per task (ARC-AGI-2 §compositional)";
+    lead = `${r.tasks.length} tasks (yield <b>${(r.yield * 100).toFixed(0)}%</b>). Each task is a CERTIFIED COMPOSITION of ≥2 rule families (depth ≥2) — e.g. <b>read the in-context key, recolour, THEN apply a structural rule</b>. ARC-AGI-2 targets exactly this: symbolic interpretation + <b>compositional reasoning (multiple interacting rules at once)</b> + contextual rule application. The families are PRIMITIVES; <b>arc_search</b> re-derives the whole composition (unique, reproduces test). Legend composites stay legend-necessary (blanking the key ⇒ unsolvable). Right-most grid = the search's own test prediction.`;
+    cards = r.tasks.map((t, i) => card(i, t.meta.program, `<b>${esc(t.meta.families.join("+"))}</b> · depth <b>${t.meta.depth}</b>${t.meta.useLegend ? " · legend-necessary ✓" : ""}`, t, 4)).join("\n");
+  } else if (mode === "legend") {
     r = L.generate(n, { seed });
     title = "gen_legend — LEGEND / symbol-grounding (axis C, strong human bias)";
     lead = `${r.tasks.length} tasks (yield <b>${(r.yield * 100).toFixed(0)}%</b>). Each grid is split by a grey divider into a <b>KEY</b> panel (rows of <b>[src | tgt]</b> swatches) and a <b>WORK</b> panel. The rule = read the key, recolour the work objects by it. <b>Strong human bias</b>: "there is a key in the picture; read it and apply it." <b>Forces abstraction</b>: the key is DIFFERENT every example, so no fixed colour mapping generalises — we PROVE it by blanking the key, which makes the task <b>unsolvable</b> (legend-necessary ✓). Certified by the search via the single <b>apply_legend</b> primitive. Right-most grid = the search's own test prediction.`;
