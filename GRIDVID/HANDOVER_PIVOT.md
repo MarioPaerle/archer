@@ -90,6 +90,39 @@ DSL brute-forcer. The current tasks force one.
    determined (≥3 pairs needed; no 1-pair fit), and a difficulty score ≥ threshold. Score & balance on that.
 3. Keep the `prodigy-task` format + ARC-gridline showcase so progress stays visible. Verify in-browser.
 
+## ✅ PROGRESS — moves #1–#3 built & verified (2026-06-29, search-first pivot is live)
+The pivot architecture is working end-to-end. Four modules, each with a `--self-test`, all green:
+- **`arc_search.js`** — the keystone. Bounded-depth, level-synchronous BFS over a compositional DSL
+  (geometry + object-structural ops + grounded colour ops). Certifies a task `hard-valid` iff minimal
+  solving depth ≥3 (no shorter program fits — proven by the search itself), the minimal programs AGREE on
+  the held-out test, with an `obsNeeded` under-determination probe + a difficulty `score`. **Self-test 7/7.**
+  Verified out-of-band: on the same depth-3 task `arc_search` certifies, v1 `solver`/`solver2` both return
+  `solvable:false` → the ceiling is broken (the hard task was *unrepresentable* in the flat verifier).
+- **`gen_search.js`** — program-first generator. Samples a depth≥3 program, renders (IN,OUT) over varied
+  multi-object scenes, keeps a task ONLY if `arc_search` certifies it (the SEARCH is the judge; a sampled
+  program that collapses to a shorter form is rejected). **Self-test 5/5, ~67% yield.** Honest gap it
+  surfaced: pure compositional depth gives DEPTH but is usually pinned by ONE pair (not under-determined).
+- **`gen_underdetermined.js` + colormap op in `arc_search`** — the second ARC-2 hallmark, made
+  search-certifiable (NOT a generator-only trick, which would rebuild the v1 ceiling). `fitColorMap` learns
+  one global colour map jointly across all train pairs and closes any frontier via a colormap terminal step
+  (+1 depth). Splitting source colours one-per-pair forces `obsNeeded≥3`. `solveTask` enforces COVERAGE: an
+  unseen test colour ⇒ flagged not-unique (genuinely ambiguous, rejected not faked). Generator = depth-2
+  object-preserving prefix |> learned colormap. **Self-test 7/7, ~67% yield, obs histogram {3:9,4:1}.**
+- **`build_search_showcase.js`** — ARC-gridline gallery (`--mode comp|under`); each card shows the program,
+  search-verified depth, obsNeeded, score, and the search's OWN test prediction (must equal TEST out).
+  Eyeballed in browser for both modes: tasks render as coherent multi-object ARC tasks, predictions match.
+
+### What's next (open levers, in priority order)
+1. **Rule INTERACTION / legend (symbol-grounding)** — still missing. A region of the grid that *reprograms*
+   the transform applied elsewhere (the north-star Latin-square+key-strip sketch). Must be a SEARCH primitive
+   (deterministic op that reads the key region), else it falls into the v1 unrepresentable-→-discarded trap.
+2. **Conjunctive selection** `A AND B` so single-feature hypotheses fail uniqueness; **interaction** where op B
+   depends on op A's *result* (the search already composes, but needs selection/region primitives).
+3. **Broaden the DSL primitive set** (more object selectors, per-region ops) so the search horizon — and thus
+   the max emittable difficulty — grows; balance the corpus on `score`/`obsNeeded`.
+4. Wire the LLM to propose *compositions & adversarial distractors* (engine verifies), and scale to a corpus.
+5. Durable record: Scintilla node `gridvid-difficulty-ceiling-pivot` (push to Flywheel) + Linear (ARC-AGI Series).
+
 ## 📌 Standing rules (project conventions — keep)
 - Coherence/solvability are the ENGINE's job, never a per-task LLM critic at scale. Program-first; LLM = taste
   (now: propose compositions/distractors). ARC palette; grids ≤30×30 ideal (pretraining can exceed but prefer).

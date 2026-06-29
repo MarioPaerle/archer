@@ -7,6 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const G = require("./gen_search.js");
+const U = require("./gen_underdetermined.js");
 const A = require("./arc_search.js");
 
 const PAL = ["#000000", "#1E93FF", "#F93C31", "#4FCC30", "#FFDC00", "#999999", "#E53AA3", "#FF851B", "#87D8F1", "#921231"];
@@ -15,8 +16,8 @@ const eqG = (a, b) => a && b && a.length === b.length && a[0].length === b[0].le
 const grid = g => `<table class=grid>${g.map(r => `<tr>${r.map(v => `<td style="background:${PAL[v] || "#000"}"></td>`).join("")}</tr>`).join("")}</table>`;
 const pairBox = (inG, outG, label, cls = "") => `<div class="pair ${cls}"><div class=cell><div class=lbl>${label} in</div>${grid(inG)}</div><div class=arrow>→</div><div class=cell><div class=lbl>${label} out</div>${grid(outG)}</div></div>`;
 
-function build(n, depth, seed) {
-  const r = G.generate(n, { seed, depth });
+function build(n, depth, seed, mode) {
+  const r = mode === "under" ? U.generate(n, { seed }) : G.generate(n, { seed, depth });
   const cards = r.tasks.map((t, idx) => {
     const d = t.meta.difficulty;
     const s = A.solveTask(t, { maxDepth: Math.max(3, depth) });
@@ -52,9 +53,9 @@ function build(n, depth, seed) {
 
 if (require.main === module) {
   const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-  const out = flag("-o", "out/search_showcase.html"), n = +flag("--n", 16), depth = +flag("--depth", 3), seed = +flag("--seed", 7);
+  const out = flag("-o", "out/search_showcase.html"), n = +flag("--n", 16), depth = +flag("--depth", 3), seed = +flag("--seed", 7), mode = flag("--mode", "comp");
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, build(n, depth, seed));
+  fs.writeFileSync(out, build(n, depth, seed, mode));
   console.log("wrote " + out);
 }
 module.exports = { build };
