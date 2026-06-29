@@ -21,6 +21,7 @@ const G5 = require("./gen5.js");
 const GD = require("./gen_deep.js");    // deep relational (anchor-based)
 const GL = require("./gen_logic.js");   // logical / IQ
 const GIQ = require("./gen_iq.js");      // matrix-reasoning (Raven, colour & shape)
+const RZ = require("./reasoning.js");    // META: abstract reasoning — principle ⊗ feature ⊗ structure ⊗ query
 
 // ---------- the unified family registry: name → { build(rng), desc, params } ----------
 // `build` returns a full prodigy-task (or null). `params` documents the LLM-settable knobs (matched against the
@@ -54,6 +55,9 @@ const REG = {
   raven_matrix:    { build: GIQ.FAMILIES.matrix_color,         desc: "complete the 3×3 matrix so each row & column holds each COLOUR once (Raven / Latin square deduction)", params: {} },
   raven_shape:     { build: GIQ.FAMILIES.matrix_shape,         desc: "complete the 3×3 matrix so each row & column holds each SHAPE once — deduce the missing shape (Raven)", params: {} },
   count_difference:{ build: GL.FAMILIES.count_diff,            desc: "output the DIFFERENCE of the two object counts as a line of marks (arithmetic)", params: {} },
+  // META abstract-reasoning: ONE engine (principle ⊗ feature ⊗ structure ⊗ query) → Raven matrix, series,
+  // odd-one-out, transform-matrix over colour/shape/size/count. Infer the hidden rule and answer.
+  reasoning:       { build: rng => { const r = RZ.generate({ n: 1, seed: rng.int(1, 2e9) }); return r.records[0] || null; }, desc: "ABSTRACT REASONING — infer the hidden rule, then deduce the answer (Raven / series / odd-one-out / analogy, over colour/shape/size/count)", params: { principle: "distribution|progression|constant|transform" } },
 };
 // DEEP RELATIONAL anchor families (find an anchor — largest/smallest/uniquely-coloured/odd-shaped/holed — then
 // every object depends on it). Fold them ALL in so ONE policy spans per-object, structural, relational AND logical.
@@ -72,7 +76,9 @@ function verify(task, params) {
   if (task.examples.some(e => JSON.stringify(e.in) === JSON.stringify(e.out))) return null;
   if (new Set(task.examples.map(e => JSON.stringify(e.out))).size < 2) return null;
   if (B.trivialSolve(task)) return null;
-  const sv = V2.solvable(task); if (!sv.solvable || !sv.unique) return null;
+  let sv = V2.solvable(task);                                  // try the operational solver…
+  if (!sv.solvable || !sv.unique) { const rz = RZ.solveReasoning(task); if (rz && rz.solvable && rz.unique) sv = { solvable: true, unique: true, rule: rz.kind || rz.rule }; }   // …else the abstract-reasoning solver
+  if (!sv.solvable || !sv.unique) return null;
   const rule = (sv.rule || "").toLowerCase();
   if (params) for (const v of Object.values(params)) if (!rule.includes(paramKeyword(v))) return null;
   task.meta.rule = sv.rule + "."; task.meta.language_description = task.meta.rule; task.meta.solver = { rule: sv.rule, unique: true };
