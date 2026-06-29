@@ -79,6 +79,28 @@ function extremeMask(g, which) {                 // keep / remove the single lar
   const sel = objs.filter(o => o.area === ext); if (sel.length !== 1) return null;   // must be UNIQUE to be well-defined
   return sel[0];
 }
+/* applyLegend — SYMBOL GROUNDING (axis C). A full-height single-colour DIVIDER splits the grid into a KEY
+ * panel (left) and a WORK panel (right). Each key row holds [src, tgt] swatches → a recolour instruction. The
+ * op PARSES the key and applies it to the work panel only. The rule lives in the image, not in the weights: a
+ * different key per example forces the model to learn the abstraction "read the key, apply it" — it cannot
+ * memorise a fixed mapping. Returns null when there is no parseable key (so it no-ops on ordinary grids). */
+function findDivider(g) {                         // leftmost full-height single-colour column with room on both sides
+  const h = g.length, w = g[0].length;
+  for (let c = 2; c <= w - 2; c++) { const v = g[0][c]; if (v && g.every(row => row[c] === v)) return c; }
+  return -1;
+}
+function parseLegend(g, d) {                       // key panel cols 0..d-1: per row, first nonzero = src, next = tgt
+  const map = {};
+  for (let r = 0; r < g.length; r++) { const cells = []; for (let c = 0; c < d; c++) if (g[r][c]) cells.push(g[r][c]); if (cells.length >= 2) map[cells[0]] = cells[1]; }
+  return map;
+}
+function applyLegend(g) {
+  const d = findDivider(g); if (d < 0) return null;
+  const map = parseLegend(g, d); if (!Object.keys(map).length) return null;
+  const o = g.map(r => r.slice());
+  for (let r = 0; r < o.length; r++) for (let c = d + 1; c < o[0].length; c++) { const x = o[r][c]; if (x && x in map) o[r][c] = map[x]; }
+  return o;
+}
 
 // ---------------- the DSL: each op maps grid→grid|null; parameterized ops expand against the live grids ----------------
 // op.variants(grids) → [{ label, fn }]   (grids = the CURRENT intermediate grids across all train pairs)
@@ -107,6 +129,8 @@ const OPS = [
   nullary("remove_smallest", safe(g => { const s = extremeMask(g, "smallest"); if (!s) return null; const o = seg(g).filter(x => x.area !== s.area || x.r !== s.r || x.c !== s.c); return gridFrom(H(g), W(g), o); })),
   nullary("complete_sym_h", safe(g => { const m = flipH(g); return g.map((row, r) => row.map((x, c) => x || m[r][c])); })),
   nullary("complete_sym_v", safe(g => { const m = flipV(g); return g.map((row, r) => row.map((x, c) => x || m[r][c])); })),
+  // ---- symbol-grounding: read an in-grid KEY region and apply it elsewhere (axis-C interaction) ----
+  nullary("apply_legend", safe(applyLegend)),
   // ---- size-changing terminal-ish ops ----
   nullary("crop_content", safe(cropContent)),
   // ---- color (parameterized — grounded in the colours actually present) ----
@@ -282,7 +306,7 @@ function difficulty(task, opts = {}) {
   return { solvable: true, depth: s.depth, unique: s.unique, programs: s.programs, obsNeeded: obs, tooEasy, score, verdict };
 }
 
-module.exports = { OPS, solveTrain, solveTask, obsNeeded, difficulty, applyProgram, trainPairsOf, testOf, _h: { gravity, cropContent, outlineLoc } };
+module.exports = { OPS, solveTrain, solveTask, obsNeeded, difficulty, applyProgram, trainPairsOf, testOf, _h: { gravity, cropContent, outlineLoc, applyLegend, findDivider, parseLegend } };
 
 // ---------------- self-test ----------------
 function selfTest() {
