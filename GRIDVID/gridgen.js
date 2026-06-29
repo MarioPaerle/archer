@@ -57,7 +57,7 @@ const REG = {
   count_difference:{ build: GL.FAMILIES.count_diff,            desc: "output the DIFFERENCE of the two object counts as a line of marks (arithmetic)", params: {} },
   // META abstract-reasoning: ONE engine (principle ⊗ feature ⊗ structure ⊗ query) → Raven matrix, series,
   // odd-one-out, transform-matrix over colour/shape/size/count. Infer the hidden rule and answer.
-  reasoning:       { build: rng => { const r = RZ.generate({ n: 1, seed: rng.int(1, 2e9) }); return r.records[0] || null; }, desc: "ABSTRACT REASONING — infer the hidden rule, then deduce the answer (Raven / series / odd-one-out / analogy, over colour/shape/size/count)", params: { principle: "distribution|progression|constant|transform" } },
+  reasoning:       { build: rng => { const principle = ["distribution", "progression", "constant", "transform"][rng.int(0, 3)]; const r = RZ.generate({ n: 1, seed: rng.int(1, 2e9), principle }); return r.records[0] || null; }, desc: "ABSTRACT REASONING — infer the hidden rule, then deduce the answer (Raven / series / odd-one-out / analogy, over colour/shape/size/count)", params: { principle: "distribution|progression|constant|transform" } },
 };
 // DEEP RELATIONAL anchor families (find an anchor — largest/smallest/uniquely-coloured/odd-shaped/holed — then
 // every object depends on it). Fold them ALL in so ONE policy spans per-object, structural, relational AND logical.
@@ -79,7 +79,7 @@ function verify(task, params) {
   let sv = V2.solvable(task);                                  // try the operational solver…
   if (!sv.solvable || !sv.unique) { const rz = RZ.solveReasoning(task); if (rz && rz.solvable && rz.unique) sv = { solvable: true, unique: true, rule: rz.kind || rz.rule }; }   // …else the abstract-reasoning solver
   if (!sv.solvable || !sv.unique) return null;
-  const rule = (sv.rule || "").toLowerCase();
+  const rule = (task.meta.kind || sv.rule || "").toLowerCase();   // reasoning tasks match on their authoritative KIND
   if (params) for (const v of Object.values(params)) if (!rule.includes(paramKeyword(v))) return null;
   task.meta.rule = sv.rule + "."; task.meta.language_description = task.meta.rule; task.meta.solver = { rule: sv.rule, unique: true };
   return task;
@@ -164,7 +164,7 @@ function promptCard() {
 
 function selfTest() {
   // every family in the registry must build at least one verified task
-  for (const f of FAMILIES) { const t = buildOne(f, E.makeRng(7), null, 120); if (!t) throw new Error("family '" + f + "' built nothing"); if (!V2.solvable(t).unique) throw new Error(f + " not uniquely solvable"); }
+  for (const f of FAMILIES) { const t = buildOne(f, E.makeRng(7), null, 120); if (!t) throw new Error("family '" + f + "' built nothing"); if (!(t.meta.solver && t.meta.solver.unique)) throw new Error(f + " not verified"); }   // buildOne already verified via the operational OR reasoning solver
   // LLM spec round-trip with params honoured
   const specs = ["task boolean op=xor", "task gravity dir=up", "task containment inside=blue outside=red", "task occlusion axis=v", "task analogy transform=mirror_h", "garbage line", "task nonsense_family"];
   const r = generateFromSpecs(specs, 3);

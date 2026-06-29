@@ -569,7 +569,9 @@ const pick = (rng, xs) => xs[rng.int(0, xs.length - 1)];
 
 function generate(opts = {}) {
   const n = opts.n || 40, rng = E.makeRng(((opts.seed || 1) >>> 0) * 2654435761 + 99991);
-  const combos = validCombos();
+  let combos = validCombos();
+  if (opts.principle) combos = combos.filter(c => c.principle === opts.principle);   // restrict to one reasoning principle
+  if (!combos.length) return { records: [], emitted: 0 };
   const out = [], seenId = new Set(), perKind = {}; let i = 0, guard = 0;
   const rej = { build: 0, teaching: 0, trivial: 0, unsolvable: 0, ambiguous: 0, dup: 0 };
   const budget = opts.budget || n * 200;
