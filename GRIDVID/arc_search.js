@@ -1,0 +1,299 @@
+#!/usr/bin/env node
+/* arc_search.js — the PIVOT keystone (see HANDOVER_PIVOT.md).
+ *
+ * v1's verifier was a FLAT enumeration of one-pass hypotheses, so the hardest task it could ever emit
+ * was the hardest single-line rule it pattern-matched. This module replaces the recognizer with a
+ * bounded-depth COMPOSITIONAL SEARCH solver: it searches programs p = op_k ∘ … ∘ op_1 over a DSL and
+ * certifies a task by what the SEARCH can re-derive, not by what a template hand-wrote.
+ *
+ * A task is HARD-VALID iff:
+ *   - search finds a program that reproduces every train pair  (solvable),
+ *   - the MINIMAL solving depth is ≥ minDepth (≥3)             (no shorter program fits ⇒ genuinely deep),
+ *   - the minimal programs AGREE on the held-out test output    (determined, not ambiguous),
+ *   - and (optionally) the rule needs ≥ minObs train pairs to pin (under-determination).
+ * The hardest emittable task is now the SEARCH HORIZON, not a one-liner. That is what breaks the ceiling.
+ *
+ * Difficulty is a VERIFIED, SCORED axis: difficulty(task) → { solvable, depth, unique, obsNeeded, score, verdict }.
+ *
+ *   node arc_search.js --self-test
+ */
+const S = require("./solver.js");
+const seg = S.segObjects;
+
+// ---------------- grid helpers (self-contained) ----------------
+const H = g => g.length, W = g => g[0].length;
+const clone = g => g.map(r => r.slice());
+const blank = (h, w) => Array.from({ length: h }, () => new Array(w).fill(0));
+const eqG = (a, b) => a.length === b.length && a[0].length === b[0].length && a.every((r, i) => r.every((x, j) => x === b[i][j]));
+const key = g => g.map(r => r.join("")).join("/");
+const keyTuple = gs => gs.map(key).join("|");
+const flipH = g => g.map(r => r.slice().reverse());
+const flipV = g => g.slice().reverse().map(r => r.slice());
+const rot180 = g => flipH(flipV(g));
+const transpose = g => g[0].map((_, c) => g.map(r => r[c]));
+const rot90 = g => transpose(g).map(r => r.slice().reverse());   // clockwise
+const rot270 = g => transpose(flipH(g));
+const colorsOf = gs => { const s = new Set(); for (const g of gs) for (const row of g) for (const x of row) if (x) s.add(x); return [...s].sort((a, b) => a - b); };
+function gridFrom(h, w, objs) {
+  const g = blank(h, w);
+  for (const o of objs) for (let i = 0; i < o.loc.length; i++) for (let j = 0; j < o.loc[0].length; j++) {
+    const v = o.loc[i][j]; if (v && o.r + i >= 0 && o.c + j >= 0 && o.r + i < h && o.c + j < w) g[o.r + i][o.c + j] = v;
+  }
+  return g;
+}
+function cropContent(g) {
+  let r0 = 1e9, r1 = -1, c0 = 1e9, c1 = -1;
+  for (let r = 0; r < H(g); r++) for (let c = 0; c < W(g); c++) if (g[r][c]) { r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); }
+  if (r1 < 0) return null;
+  const o = []; for (let r = r0; r <= r1; r++) o.push(g[r].slice(c0, c1 + 1)); return o;
+}
+function outlineLoc(loc) {                       // hollow an object: keep only border cells of each solid run
+  const h = loc.length, w = loc[0].length, o = loc.map(r => r.slice());
+  for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
+    if (!loc[i][j]) continue;
+    const interior = i > 0 && i < h - 1 && j > 0 && j < w - 1 && loc[i - 1][j] && loc[i + 1][j] && loc[i][j - 1] && loc[i][j + 1];
+    if (interior) o[i][j] = 0;
+  }
+  return o;
+}
+function gravity(g, dir) {
+  const objs = seg(g); if (!objs.length) return null;
+  const h = H(g), w = W(g);
+  // settle each object as a rigid body until it hits a wall or another settled object
+  const occ = blank(h, w);
+  const order = objs.slice().sort((a, b) => dir === "down" ? b.r - a.r : dir === "up" ? a.r - b.r : dir === "right" ? b.c - a.c : a.c - b.c);
+  const dr = dir === "down" ? 1 : dir === "up" ? -1 : 0, dc = dir === "right" ? 1 : dir === "left" ? -1 : 0;
+  for (const o of order) {
+    let r = o.r, c = o.c;
+    const cells = []; for (let i = 0; i < o.loc.length; i++) for (let j = 0; j < o.loc[0].length; j++) if (o.loc[i][j]) cells.push([i, j]);
+    const fits = (rr, cc) => cells.every(([i, j]) => { const y = rr + i, x = cc + j; return y >= 0 && y < h && x >= 0 && x < w && !occ[y][x]; });
+    while (fits(r + dr, c + dc)) { r += dr; c += dc; }
+    if (!fits(r, c)) return null;
+    for (const [i, j] of cells) occ[r + i][c + j] = o.loc[i][j];
+  }
+  return occ;
+}
+function extremeMask(g, which) {                 // keep / remove the single largest|smallest object
+  const objs = seg(g); if (objs.length < 2) return null;
+  const areas = objs.map(o => o.area), ext = which === "largest" ? Math.max(...areas) : Math.min(...areas);
+  const sel = objs.filter(o => o.area === ext); if (sel.length !== 1) return null;   // must be UNIQUE to be well-defined
+  return sel[0];
+}
+
+// ---------------- the DSL: each op maps grid→grid|null; parameterized ops expand against the live grids ----------------
+// op.variants(grids) → [{ label, fn }]   (grids = the CURRENT intermediate grids across all train pairs)
+const nullary = (label, fn) => ({ label, variants: () => [{ label, fn }] });
+function safe(fn) { return g => { try { const r = fn(g); return r && r.length && r[0].length ? r : null; } catch { return null; } }; }
+
+const OPS = [
+  // ---- geometry (information-preserving) ----
+  nullary("flipH", safe(flipH)),
+  nullary("flipV", safe(flipV)),
+  nullary("rot90", safe(rot90)),
+  nullary("rot180", safe(rot180)),
+  nullary("rot270", safe(rot270)),
+  nullary("transpose", safe(transpose)),
+  // ---- structural (object-level, mostly irreversible ⇒ they don't collapse into geometry) ----
+  nullary("gravity_down", safe(g => gravity(g, "down"))),
+  nullary("gravity_up", safe(g => gravity(g, "up"))),
+  nullary("gravity_left", safe(g => gravity(g, "left"))),
+  nullary("gravity_right", safe(g => gravity(g, "right"))),
+  nullary("fill_holes", safe(g => { const o = seg(g); for (const x of o) if (x.hasHole) x.loc = x.loc.map(r => r.map(() => x.mainColor)); return gridFrom(H(g), W(g), o); })),
+  nullary("outline_all", safe(g => { const o = seg(g); for (const x of o) x.loc = outlineLoc(x.loc); return gridFrom(H(g), W(g), o); })),
+  nullary("denoise", safe(g => { const o = seg(g).filter(x => x.area > 1); return o.length ? gridFrom(H(g), W(g), o) : null; })),
+  nullary("keep_largest", safe(g => { const s = extremeMask(g, "largest"); return s ? gridFrom(H(g), W(g), [s]) : null; })),
+  nullary("keep_smallest", safe(g => { const s = extremeMask(g, "smallest"); return s ? gridFrom(H(g), W(g), [s]) : null; })),
+  nullary("remove_largest", safe(g => { const s = extremeMask(g, "largest"); if (!s) return null; const o = seg(g).filter(x => x.area !== s.area || x.r !== s.r || x.c !== s.c); return gridFrom(H(g), W(g), o); })),
+  nullary("remove_smallest", safe(g => { const s = extremeMask(g, "smallest"); if (!s) return null; const o = seg(g).filter(x => x.area !== s.area || x.r !== s.r || x.c !== s.c); return gridFrom(H(g), W(g), o); })),
+  nullary("complete_sym_h", safe(g => { const m = flipH(g); return g.map((row, r) => row.map((x, c) => x || m[r][c])); })),
+  nullary("complete_sym_v", safe(g => { const m = flipV(g); return g.map((row, r) => row.map((x, c) => x || m[r][c])); })),
+  // ---- size-changing terminal-ish ops ----
+  nullary("crop_content", safe(cropContent)),
+  // ---- color (parameterized — grounded in the colours actually present) ----
+  {
+    label: "recolor_all",
+    variants: grids => colorsOf(grids).map(c => ({ label: "recolor_all:" + c, fn: safe(g => g.map(r => r.map(x => x ? c : 0))) })),
+  },
+  {
+    label: "swap",
+    variants: grids => {
+      const cs = colorsOf(grids), out = [];
+      for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
+        const a = cs[i], b = cs[j];
+        out.push({ label: `swap:${a},${b}`, fn: safe(g => g.map(r => r.map(x => x === a ? b : x === b ? a : x))) });
+      }
+      return out;
+    },
+  },
+];
+
+// ---------------- bounded compositional search ----------------
+/* solveTrain(train, {maxDepth, maxStates}) → { found, depth, programs:[[opLabel…]…], applyProgram }
+ * Level-synchronous BFS over the TUPLE of (one intermediate grid per train pair). The goal is reached
+ * when every intermediate grid equals its train OUTPUT. We expand whole levels so that at the minimal
+ * depth we collect ALL solving programs (needed for the uniqueness check). */
+function buildVariants(grids) {                  // expand the parameterized DSL against the current grids
+  const out = [];
+  for (const op of OPS) for (const v of op.variants(grids)) out.push(v);
+  return out;
+}
+function applyProgram(prog, grid) {
+  let g = grid;
+  for (const step of prog) { g = step.fn(g); if (!g) return null; }
+  return g;
+}
+function solveTrain(train, opts = {}) {
+  const maxDepth = opts.maxDepth ?? 3, maxStates = opts.maxStates ?? 200000;
+  const ins = train.map(t => t.in), outs = train.map(t => t.out);
+  const goal = grids => grids.every((g, i) => eqG(g, outs[i]));
+  // a "state" = { grids:[…per pair…], prog:[step…] }
+  let level = [{ grids: ins, prog: [] }];
+  const seen = new Set([keyTuple(ins)]);
+  let nStates = 1;
+  if (goal(ins)) return { found: true, depth: 0, programs: [[]], applyProgram };
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const next = [], goalsHere = [];
+    for (const st of level) {
+      const variants = buildVariants(st.grids);
+      for (const v of variants) {
+        const ng = []; let ok = true;
+        for (const g of st.grids) { const r = v.fn(g); if (!r) { ok = false; break; } ng.push(r); }
+        if (!ok) continue;
+        const k = keyTuple(ng);
+        if (seen.has(k)) continue;                // dedup: never revisit an identical intermediate tuple
+        seen.add(k); nStates++;
+        const nst = { grids: ng, prog: st.prog.concat([v]) };
+        if (goal(ng)) goalsHere.push(nst);
+        else next.push(nst);
+        if (nStates > maxStates) { /* budget hit — return what we have at this level */ break; }
+      }
+      if (nStates > maxStates) break;
+    }
+    if (goalsHere.length) {
+      // minimal depth reached → collect ALL solving programs here (dedup by label sequence)
+      const progs = [], pk = new Set();
+      for (const g of goalsHere) { const lab = g.prog.map(s => s.label).join(">"); if (!pk.has(lab)) { pk.add(lab); progs.push(g.prog); } }
+      return { found: true, depth, programs: progs, applyProgram };
+    }
+    level = next;
+    if (!level.length || nStates > maxStates) break;
+  }
+  return { found: false, depth: Infinity, programs: [], applyProgram };
+}
+
+// ---------------- task-level API (prodigy-task format) ----------------
+function trainPairsOf(task) {                     // {examples:[{in:[grid],out:[grid]}…]} → [{in,out}…]
+  return task.examples.map(e => ({ in: e.in[0], out: e.out[0] }));
+}
+function testOf(task) { return { in: task.in[0], out: task.out ? task.out[0] : null }; }
+
+/* solveTask: search the train, then PREDICT the test. Returns the determined prediction + whether it is unique. */
+function solveTask(task, opts = {}) {
+  const train = trainPairsOf(task), test = testOf(task);
+  const res = solveTrain(train, opts);
+  if (!res.found) return { solvable: false, depth: Infinity, unique: false, prediction: null, programs: 0 };
+  const preds = res.programs.map(p => applyProgram(p, test.in)).filter(Boolean);
+  const distinct = new Set(preds.map(key));
+  return {
+    solvable: true, depth: res.depth, programs: res.programs.length,
+    unique: distinct.size === 1, prediction: preds[0] || null,
+    programLabels: res.programs.map(p => p.map(s => s.label).join(" |> ")),
+  };
+}
+
+/* obsNeeded: the smallest k such that searching on only k train pairs pins a program that ALSO fits the
+ * remaining pairs. k≥3 ⇒ genuinely under-determined (no 1 or 2 pairs reveal the rule). */
+function obsNeeded(task, opts = {}) {
+  const train = trainPairsOf(task);
+  const full = solveTrain(train, opts);
+  if (!full.found) return Infinity;
+  for (let k = 1; k <= train.length; k++) {
+    const sub = train.slice(0, k);
+    const r = solveTrain(sub, { ...opts, maxDepth: full.depth });
+    if (!r.found) continue;
+    // does ANY program found on the first k pairs reproduce ALL pairs at depth ≤ full.depth?
+    const pins = r.programs.some(p => train.every(t => { const o = applyProgram(p, t.in); return o && eqG(o, t.out); }));
+    if (pins) return k;
+  }
+  return train.length;                            // never pinned by a strict subset ⇒ needs all of them
+}
+
+/* difficulty: the VERIFIED, SCORED difficulty axis the pivot is built around. */
+function difficulty(task, opts = {}) {
+  const minDepth = opts.minDepth ?? 3;
+  const s = solveTask(task, opts);
+  if (!s.solvable) return { solvable: false, depth: Infinity, unique: false, obsNeeded: Infinity, tooEasy: false, score: 0, verdict: "unsolved" };
+  const obs = obsNeeded(task, opts);
+  const tooEasy = s.depth < minDepth;
+  // score rewards depth, multi-observation under-determination, and a single determined answer
+  const score = s.depth * 10 + Math.max(0, obs - 1) * 5 + (s.unique ? 5 : 0) - (s.programs - 1);
+  const verdict = (!tooEasy && s.unique) ? "hard-valid" : tooEasy ? "too-easy" : "ambiguous";
+  return { solvable: true, depth: s.depth, unique: s.unique, programs: s.programs, obsNeeded: obs, tooEasy, score, verdict };
+}
+
+module.exports = { OPS, solveTrain, solveTask, obsNeeded, difficulty, applyProgram, trainPairsOf, testOf, _h: { gravity, cropContent, outlineLoc } };
+
+// ---------------- self-test ----------------
+function selfTest() {
+  // tiny seeded RNG (no Date/Math.random dependence in logic)
+  let s = 12345; const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const ri = n => Math.floor(rnd() * n);
+  // place K non-overlapping solid rectangles of DISTINCT sizes & colours on a blank grid
+  function scene(h, w, k) {
+    const g = blank(h, w); const used = []; let placed = 0, tries = 0;
+    const sizes = []; while (sizes.length < k) { const a = 1 + ri(3), b = 1 + ri(3); if (!sizes.some(z => z[0] * z[1] === a * b)) sizes.push([a, b]); }
+    while (placed < k && tries < 500) {
+      tries++; const [rh, rw] = sizes[placed]; const r0 = ri(h - rh + 1), c0 = ri(w - rw + 1);
+      let clash = false;
+      for (let i = -1; i <= rh && !clash; i++) for (let j = -1; j <= rw && !clash; j++) { const y = r0 + i, x = c0 + j; if (y >= 0 && y < h && x >= 0 && x < w && g[y][x]) clash = true; }
+      if (clash) continue;
+      const col = placed + 1;
+      for (let i = 0; i < rh; i++) for (let j = 0; j < rw; j++) g[r0 + i][c0 + j] = col;
+      used.push(col); placed++;
+    }
+    return placed === k ? g : null;
+  }
+  function makeTask(progFns, nPairs, h, w, k) {
+    const examples = []; let guard = 0;
+    while (examples.length < nPairs && guard < 2000) {
+      guard++; const inG = scene(h, w, k); if (!inG) continue;
+      let outG = inG; for (const f of progFns) { outG = f(outG); if (!outG) break; }
+      if (!outG || eqG(outG, inG)) continue;
+      examples.push({ in: [inG], out: [outG] });
+    }
+    const inG = scene(h, w, k); let outG = inG; for (const f of progFns) outG = f(outG);
+    return { examples, in: [inG], out: [outG] };
+  }
+  let pass = 0, fail = 0;
+  const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  ✓ " + name + (extra ? "  " + extra : "")); } else { fail++; console.log("  ✗ " + name + "  " + extra); } };
+
+  console.log("arc_search self-test");
+
+  // (1) a genuine 3-STEP task v1's flat solver cannot represent: remove_smallest |> gravity_down |> outline_all
+  const prog3 = [g => gridFrom(H(g), W(g), (() => { const m = extremeMask(g, "smallest"); return seg(g).filter(x => !(m && x.r === m.r && x.c === m.c && x.area === m.area)); })()),
+                 g => gravity(g, "down"),
+                 g => { const o = seg(g); for (const x of o) x.loc = outlineLoc(x.loc); return gridFrom(H(g), W(g), o); }];
+  const hard = makeTask(prog3, 4, 9, 9, 4);
+  const dH = difficulty(hard, { maxDepth: 3 });
+  ok("3-step task is SOLVED by search", dH.solvable, JSON.stringify({ depth: dH.depth }));
+  ok("3-step task minimal depth === 3 (no shorter program fits)", dH.depth === 3);
+  ok("3-step task is NOT flagged too-easy", dH.tooEasy === false, "verdict=" + dH.verdict);
+
+  // (2) a trivial 1-STEP task must be REJECTED as too-easy
+  const easy = makeTask([flipH], 4, 8, 8, 3);
+  const dE = difficulty(easy, { maxDepth: 3 });
+  ok("1-step task minimal depth === 1", dE.depth === 1, "depth=" + dE.depth);
+  ok("1-step task flagged too-easy (rejected as not ARC-2 hard)", dE.tooEasy === true && dE.verdict === "too-easy");
+
+  // (3) depth-2 search must FAIL on the 3-step task (the ceiling is the search horizon, proven)
+  const r2 = solveTrain(trainPairsOf(hard), { maxDepth: 2 });
+  ok("depth-2 search FAILS on the 3-step task", r2.found === false);
+
+  // (4) the search's prediction on the held-out test is exactly the ground-truth output
+  const sH = solveTask(hard, { maxDepth: 3 });
+  ok("search reproduces the held-out test output", sH.prediction && eqG(sH.prediction, hard.out[0]));
+
+  console.log(`\n${pass} passed, ${fail} failed`);
+  if (fail) process.exit(1);
+}
+if (require.main === module && process.argv.includes("--self-test")) selfTest();
