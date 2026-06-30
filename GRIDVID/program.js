@@ -381,40 +381,52 @@ function selText(sel) {
     case "in_region": return "objects in the " + sel.region.side + " half"; default: return "the selected objects";
   }
 }
-// a stage = { node, text, concept }. `ctx` carries the active colour (always present in the scene) + rng + a used-set.
-function sampleStage(rng, ctx) {
-  const pick = a => a[rng.int(0, a.length - 1)];
-  const ac = ctx.active;
-  const selPool = () => pick([
-    { s: "all" }, { s: "largest" }, { s: "smallest" },
-    { s: "by_size", cls: pick(["large", "small"]) },
-    { s: "by_color", color: ac },
-    { s: "in_region", region: { reg: "half", side: pick(SIDES) } },
-  ]);
-  const kinds = ["geo", "outline", "fill", "gravity", "recolor", "dispatch"].filter(k => !ctx.used.has(k) || ctx.used.size >= 4);
-  const kind = pick(kinds.length ? kinds : ["geo"]); ctx.used.add(kind);
-  if (kind === "geo") { const sel = selPool(), t = pick([{ t: "mirror_h", w: "mirror left-right" }, { t: "flip_v", w: "flip top-bottom" }, { t: "rotate_90", w: "rotate 90°" }]); return { node: { op: "apply", sel, transform: { t: t.t } }, text: t.w + " " + selText(sel), concept: "geometry" }; }
-  if (kind === "outline") { const sel = pick([{ s: "all" }, { s: "largest" }, { s: "by_size", cls: "large" }]); return { node: { op: "apply", sel, transform: { t: "outline" } }, text: "outline " + selText(sel), concept: "topology" }; }
-  if (kind === "fill") { const sel = pick([{ s: "largest" }, { s: "has_hole", holed: true }]); return { node: { op: "apply", sel, transform: { t: "fill_hole" } }, text: "fill " + (sel.s === "has_hole" ? "the hollow objects" : "the largest object") + " solid", concept: "topology" }; }
-  if (kind === "gravity") { const dir = pick(DIRS), sel = pick([{ s: "by_color", color: ac }, { s: "all" }, { s: "by_size", cls: "large" }]); return { node: { op: "apply", sel, transform: { t: "fall", dir } }, text: selText(sel) + " fall " + dir, concept: "physics" }; }
-  if (kind === "recolor") { const sel = pick([{ s: "largest" }, { s: "smallest" }, { s: "by_size", cls: "small" }, { s: "in_region", region: { reg: "half", side: pick(SIDES) } }]); return { node: { op: "apply", sel, transform: { t: "recolor", color: ac } }, text: "recolour " + selText(sel) + " " + COLNAME[ac], concept: "color" }; }
-  // dispatch: per-object different op by a key — a whole rule in one stage
-  const key = pick([{ k: "size_class" }, { k: "color" }]);
-  const cases = key.k === "size_class" ? { large: { t: "outline" }, small: { t: "fall", dir: "down" } } : { [ac]: { t: "fall", dir: "down" } };
-  const txt = key.k === "size_class" ? "outline large objects and drop small ones" : (COLNAME[ac] + " objects fall, others stay");
-  return { node: { op: "dispatch", key, cases, default: { t: "identity" } }, text: txt, concept: "dispatch" };
-}
+// ARC-AGI-2 tasks are NOT 4 independent transforms glued together — they are a FEW rules where each step
+// DEPENDS on a previous one's result (find an anchor → everything relates to it; a property decides the op).
+// We build exactly that, using program.js's real dependency machinery: `bind` (capture an anchor) + the
+// RELATIONAL transforms (recolor_to / copy_shape / reflect_pos that read env[ref]) and `dispatch` (per-object
+// op chosen by a property — the contextual rule). Anchors: largest / smallest / unique_color / unique_shape / holed.
+const ANCHORS = { largest: "the largest object", smallest: "the smallest object", unique_color: "the uniquely-coloured object", unique_shape: "the odd-shaped object", holed: "the hollow object" };
+const ANCHOR_SEL = { largest: { s: "largest" }, smallest: { s: "smallest" }, holed: { s: "has_hole", holed: true } };   // anchors that are also directly selectable for a pre-step
+
+// build ONE dependent program: a bind + relational chain, or a contextual dispatch.
 function sampleChain(rng, depth) {
-  const palette = [2, 3, 4, 6, 7, 8], active = palette[rng.int(0, palette.length - 1)];
-  const ctx = { active, rng, used: new Set() };
-  const stages = []; for (let i = 0; i < depth; i++) stages.push(sampleStage(rng, ctx));
-  const node = { op: "seq", steps: stages.map(s => s.node) };
-  const rule = "Apply these rules IN ORDER: " + stages.map((s, i) => (i + 1) + ") " + s.text).join("; ") + ".";
-  const concepts = ["composition", "sequence", ...new Set(stages.map(s => s.concept))];
+  const pick = a => a[rng.int(0, a.length - 1)];
+  const palette = [2, 3, 4, 6, 7, 8];
+  // ---- pattern CONTEXTUAL (a single rule whose effect is decided per-object by a property) ----
+  if (rng.int(0, 2) === 0) {
+    const key = pick([{ k: "size_class", vals: ["large", "small"] }, { k: "has_hole", vals: ["holed", "solid"] }]);
+    const opPool = [{ t: { t: "outline" }, w: "is outlined" }, { t: { t: "fall", dir: "down" }, w: "falls to the floor" }, { t: { t: "fill_hole" }, w: "is filled solid" }, { t: { t: "rotate_90" }, w: "is rotated 90°" }];
+    const a = pick(opPool); let b = pick(opPool); while (b.w === a.w) b = pick(opPool);
+    const cases = { [key.vals[0]]: a.t, [key.vals[1]]: b.t };
+    const rule = `Each object is transformed by its ${key.k === "size_class" ? "SIZE" : "shape"}: ${key.vals[0]} objects → ${a.w}; ${key.vals[1]} objects → ${b.w}. (The operation DEPENDS on each object's own property.)`;
+    return {
+      name: "ctx_" + key.k, prior: "contextual-dispatch", rule, concepts: ["contextual", "dispatch", "per-object", key.k],
+      node: { op: "dispatch", key: { k: key.k }, cases, default: { t: "identity" } },
+      sampler: r => sampleScene(r, { H: r.int(14, 18), W: r.int(15, 20), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: true, sizes: [2, 2, 4, 5, 3, 4], gap: 1 }),
+    };
+  }
+  // ---- pattern ANCHOR-RELATIONAL (find a special object; the REST of the scene is transformed relative to it) ----
+  const anchor = pick(Object.keys(ANCHORS));
+  const rel = pick([
+    { t: { t: "recolor_to", ref: "A" }, w: "every other object takes its colour", c: "color" },
+    { t: { t: "copy_shape", ref: "A" }, w: "every other object morphs into its shape", c: "shape" },
+    { t: { t: "reflect_pos", ref: "A", axis: pick(["h", "v"]) }, w: "every object is mirrored across it", c: "symmetry" },
+  ]);
+  const steps = [{ op: "bind", pick: anchor, name: "A" }];
+  const texts = [`find ${ANCHORS[anchor]}`];
+  // optional DEPENDENT pre-op on the anchor itself (depth ≥ 3): transform the anchor, then relate the rest to it
+  if (depth >= 3 && ANCHOR_SEL[anchor]) {
+    const pre = pick([{ t: { t: "outline" }, w: "outline it" }, { t: { t: "recolor", color: pick(palette) }, w: "recolour it " + COLNAME[pick(palette)] }]);
+    steps.push({ op: "apply", sel: ANCHOR_SEL[anchor], transform: pre.t }); texts.push(pre.w);
+  }
+  steps.push({ op: "apply", sel: { s: "all" }, transform: rel.t }); texts.push(rel.w);
+  const rule = "First " + texts[0] + "; then " + texts.slice(1).join("; then ") + ". (Each step DEPENDS on having found that one object.)";
   return {
-    name: "chain" + depth + "_" + stages.map(s => s.concept[0]).join(""),
-    prior: "composed-chain", rule, concepts, node,
-    sampler: r => sampleScene(r, { H: r.int(15, 19), W: r.int(16, 22), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: true, withCore: false, ensureColors: [active, active], spreadHalves: true, sizes: [2, 3, 4, 3, 2, 4], gap: 1, upperFrac: 0.7 }),
+    name: "anchor_" + anchor + "_" + rel.c, prior: "anchor-relational", rule,
+    concepts: ["relational", "anchor", "dependency", rel.c, anchor],
+    node: { op: "seq", steps },
+    sampler: r => sampleScene(r, { H: r.int(15, 19), W: r.int(16, 22), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: anchor === "holed", sizes: [2, 3, 5, 4, 2, 3], gap: 1, upperFrac: 0.8 }),
   };
 }
 // generate N verified composed tasks (teaching-gated: OUT≠IN on every pair + examples vary).
