@@ -289,13 +289,19 @@ function objectMeta(scene) {
 }
 
 // ============================================================ task builder
+// two non-removed objects sharing a cell ⇒ they overwrite each other ⇒ the solution is AMBIGUOUS. Reject.
+function sceneOverlap(scene) {
+  const occ = new Set();
+  for (const o of scene.objects) { if (o._removed) continue; for (const [r, c] of absCells(o)) { const k = r + "," + c; if (occ.has(k)) return true; occ.add(k); } }
+  return false;
+}
 function buildProgramTask(prog, opts = {}) {
   const rng = E.makeRng((opts.seed || 1) * 2654435761 + 13);
   const nEx = opts.nEx || rng.int(3, 4), examples = [];
-  const mkPair = () => { const inScene = prog.sampler(rng); const outScene = applyNode(prog.node, inScene); return { inScene, in: [renderScene(inScene)], out: [renderScene(outScene)] }; };
-  let first = null;
-  for (let i = 0; i < nEx; i++) { const p = mkPair(); if (!first) first = p; examples.push({ in: p.in, out: p.out }); }
-  const t = mkPair();
+  const mkPair = () => { const inScene = prog.sampler(rng); const outScene = applyNode(prog.node, inScene); return { inScene, outScene, in: [renderScene(inScene)], out: [renderScene(outScene)] }; };
+  let first = null, overlap = false;
+  for (let i = 0; i < nEx; i++) { const p = mkPair(); if (!first) first = p; if (sceneOverlap(p.outScene)) overlap = true; examples.push({ in: p.in, out: p.out }); }
+  const t = mkPair(); if (sceneOverlap(t.outScene)) overlap = true;
   const width = t.in[0][0].length, height = t.in[0].length;
   const tree = serializeNode(prog.node);
   const depth = nodeDepth(prog.node), branches = dispatchBranches(prog.node), nobj = first.inScene.objects.length;
@@ -313,7 +319,7 @@ function buildProgramTask(prog, opts = {}) {
         targets: ["arc_pair", "next_frame", "inverse_dynamics", "object_aux", "relation_aux"],
       },
       compiled_dsl: null,                            // PAN-176 future: Python compiled function
-      teaching: { ok: true, coherent: true, examplesVary: true },
+      teaching: { ok: !overlap, coherent: !overlap, examplesVary: true, reasons: overlap ? ["output objects overlap — ambiguous solution"] : [] },
     },
   };
 }
@@ -412,33 +418,50 @@ function sampleChain(rng, depth) {
   const palette = FULL_PALETTE;
   // a richly varied scene: wide shape vocabulary + internal skins + cores + holed mix + full palette.
   const richScene = extra => r => sampleScene(r, Object.assign({ H: r.int(15, 20), W: r.int(16, 22), K: r.int(4, 7), palette, kinds: KINDS_RICH, holedMix: r.int(0, 1) === 0, skinFrac: 0.4, withCore: r.int(0, 2) === 0, sizes: [2, 3, 4, 5, 3, 2, 4], gap: 1, upperFrac: 0.85 }, extra));
-  const OPW = [{ t: { t: "outline" }, w: "is outlined" }, { t: { t: "fall", dir: pick(DIRS) }, w: "falls" }, { t: { t: "fill_hole" }, w: "is filled solid" }, { t: { t: "rotate_90" }, w: "is rotated 90°" }, { t: { t: "mirror_h" }, w: "is mirrored" }, { t: { t: "recolor", color: pick(palette) }, w: "is recoloured" }];
+  // WEIGHTED op sampler — many BASIC functions for combinatorial explosion; geometry (rotate/mirror/flip) is
+  // deliberately RARE (Mario: rotate/mirror were ~5× overused). Each call grounds its own params.
+  const wpick = arr => { const tot = arr.reduce((s, x) => s + x.w, 0); let r = rng.int(0, tot - 1); for (const x of arr) { if (r < x.w) return x; r -= x.w; } return arr[arr.length - 1]; };
+  const sampleOp = () => wpick([
+    { w: 5, g: () => { const c = pick(palette); return { t: { t: "recolor", color: c }, w: "is recoloured " + COLNAME[c] }; } },
+    { w: 4, g: () => { const d = pick(DIRS); return { t: { t: "fall", dir: d }, w: "falls " + d }; } },
+    { w: 4, g: () => ({ t: { t: "outline" }, w: "is outlined" }) },
+    { w: 3, g: () => ({ t: { t: "fill_hole" }, w: "is filled solid" }) },
+    { w: 3, g: () => { const dr = pick([-2, -1, 1, 2]), dc = pick([-2, -1, 1, 2]); return { t: { t: "translate", dr, dc }, w: "shifts" }; } },
+    { w: 3, g: () => ({ t: { t: "remove" }, w: "disappears" }) },
+    { w: 2, g: () => { const c = pick(palette); return { t: { t: "recolor_core", color: c }, w: "gets a " + COLNAME[c] + " core" }; } },
+    { w: 1, g: () => ({ t: { t: "rotate_90" }, w: "is rotated 90°" }) },     // geometry: RARE
+    { w: 1, g: () => ({ t: { t: "rotate_180" }, w: "is rotated 180°" }) },
+    { w: 1, g: () => ({ t: { t: "mirror_h" }, w: "is mirrored" }) },
+    { w: 1, g: () => ({ t: { t: "flip_v" }, w: "is flipped" }) },
+  ]).g();
   // ---- pattern CONTEXTUAL (a single rule whose effect is decided per-object by a property) ----
   if (rng.int(0, 2) === 0) {
-    const key = pick([
-      { k: "size_class", vals: ["large", "small"], lab: "SIZE" },
-      { k: "has_hole", vals: ["holed", "solid"], lab: "whether it is hollow" },
-      { k: "orientation", vals: ["tall", "wide"], lab: "ORIENTATION" },
-      { k: "quadrant", vals: ["TL", "TR", "BL", "BR"], lab: "QUADRANT" },
-      { k: "shape_kind", vals: null, lab: "SHAPE" },
+    const key = wpick([
+      { w: 4, k: "size_class", vals: ["large", "small"], lab: "SIZE" },
+      { w: 4, k: "has_hole", vals: ["holed", "solid"], lab: "whether it is hollow" },
+      { w: 3, k: "shape_kind", vals: null, lab: "SHAPE" },
+      { w: 3, k: "color", vals: null, lab: "COLOUR" },
+      { w: 3, k: "orientation", vals: ["tall", "wide"], lab: "ORIENTATION" },
+      { w: 1, k: "quadrant", vals: ["TL", "TR", "BL", "BR"], lab: "QUADRANT" },   // RARE (was overused)
     ]);
-    const vals = key.vals || ["square", "triangle", "plus"];                 // shape_kind: pick a few kinds to route
-    const ops = []; const usedW = new Set(); for (const v of vals) { let o = pick(OPW); let g = 0; while (usedW.has(o.w) && g++ < 8) o = pick(OPW); usedW.add(o.w); ops.push(o); }
+    const vals = key.vals || (key.k === "color" ? palette.slice().sort(() => rng.int(0, 1) - 0.5).slice(0, 3) : pick([["square", "triangle", "plus"], ["Lshape", "Tshape", "diamond"], ["Ushape", "Cshape", "arrow"]]));
+    const ops = []; const usedW = new Set(); for (const v of vals) { let o = sampleOp(), g = 0; while (usedW.has(o.w) && g++ < 8) o = sampleOp(); usedW.add(o.w); ops.push(o); }
     const cases = {}; vals.forEach((v, i) => cases[v] = ops[i].t);
-    const rule = `Each object is transformed by its ${key.lab}: ` + vals.map((v, i) => `${v} → ${ops[i].w}`).join("; ") + ". (The operation DEPENDS on each object's own property.)";
+    const rule = `Each object is transformed by its ${key.lab}: ` + vals.map((v, i) => `${COLNAME[v] || v} → ${ops[i].w}`).join("; ") + ". (The operation DEPENDS on each object's own property.)";
     return {
       name: "ctx_" + key.k, prior: "contextual-dispatch", rule, concepts: ["contextual", "dispatch", "per-object", key.k],
       node: { op: "dispatch", key: { k: key.k }, cases, default: { t: "identity" } },
-      sampler: richScene({ holedMix: key.k === "has_hole", spreadHalves: key.k === "quadrant" }),
+      sampler: richScene({ holedMix: key.k === "has_hole", spreadHalves: key.k === "quadrant", ensureColors: key.k === "color" ? vals : undefined }),
     };
   }
   // ---- pattern ANCHOR-RELATIONAL (find a special object; the REST of the scene is transformed relative to it) ----
   const anchor = pick(Object.keys(ANCHORS));
-  const rel = pick([
-    { t: { t: "recolor_to", ref: "A" }, w: "every other object takes its colour", c: "color" },
-    { t: { t: "copy_shape", ref: "A" }, w: "every other object morphs into its shape", c: "shape" },
-    { t: { t: "reflect_pos", ref: "A", axis: pick(["h", "v"]) }, w: "every object is mirrored across it", c: "symmetry" },
-  ]);
+  const relChoices = [
+    { wt: 4, t: { t: "recolor_to", ref: "A" }, w: "every other object takes its colour", c: "color" },
+    { wt: 2, t: { t: "copy_shape", ref: "A" }, w: "every other object morphs into its shape", c: "shape" },
+    { wt: 1, t: { t: "reflect_pos", ref: "A", axis: pick(["h", "v"]) }, w: "every object is mirrored across it", c: "symmetry" },   // RARE (mirror)
+  ];
+  const rel = (() => { const tot = relChoices.reduce((s, x) => s + x.wt, 0); let r = rng.int(0, tot - 1); for (const x of relChoices) { if (r < x.wt) return x; r -= x.wt; } return relChoices[0]; })();
   const steps = [{ op: "bind", pick: anchor, name: "A" }];
   const texts = [`find ${ANCHORS[anchor]}`];
   // optional DEPENDENT pre-op on the anchor itself (depth ≥ 3): transform the anchor, then relate the rest to it
@@ -463,6 +486,7 @@ function generateComposed(opts = {}) {
   while (out.length < n && guard++ < n * 30) {
     const d = Array.isArray(depth) ? depth[rng.int(0, depth.length - 1)] : depth;
     let task; try { task = buildProgramTask(sampleChain(rng, d), { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    if (!task.meta.teaching.coherent) continue;   // reject ambiguous tasks (output objects overlap/overwrite)
     const idOk = task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out)) && new Set(task.examples.map(e => JSON.stringify(e.out))).size >= 2;
     if (!idOk) continue;
     out.push(task);
