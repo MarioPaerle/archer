@@ -43,6 +43,13 @@ HANDOVER che ti dice di reinventare il verificatore senza prima averlo confronta
 ✅ Se il sistema reale ha un limite, **estendilo dentro** (`program.js`/`engine.js`/`DSL/`) e dillo a Mario, con un
 issue Linear. ✅ Nel dubbio su cosa fare, leggi i `DESIGN/` e chiedi — non costruire.
 
+## 🖼️ REGOLA HTML — mostra OGNI modifica in HTML (Mario, standing, non negoziabile)
+Mario vuole **vedere** ogni modifica resa visivamente, non leggerne il resoconto. Dopo QUALSIASI cambiamento
+(engine, DSL, un generatore, le famiglie, il corpus, anche una riga) **produci un HTML visualizzabile e
+mandaglielo/aprilo** — usa i renderer dell'engine (`node cli.js gen <scene…> --html`,
+`node cli.js gallery <dir> [--open]`, o `--html` sui comandi di generazione). Niente HTML = la modifica non è
+"mostrata". (Vedi `ARCHER.md` regola 6.)
+
 ---
 
 ## 0. Perché questa KB esiste (la missione)

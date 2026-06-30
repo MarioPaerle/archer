@@ -17,6 +17,12 @@ each CINECA clone, every agent — is a working copy of it. Keep them in sync.
    co-authors.**
 5. **The engine self-test is the gate.** `cd GRIDVID && node cli.js self-test` must be green before you
    push engine/CLI changes.
+6. **SHOW HTML for EVERY change (Mario's standing rule — non-negotiable).** Mario wants to *see* every
+   modification rendered, not read about it. After ANY change to the engine, the DSL, a generator, the
+   families, or the corpus, **produce a viewable HTML** and surface it to him (send the file / open it).
+   Use the engine's own renderers — `node cli.js gen <scene…> --html`, `node cli.js gallery <dir> [--open]`,
+   or `--html` on the generation commands — never describe a result without the visual. No HTML = the change
+   is not "shown". This applies to a 1-line tweak as much as a new family.
 
 ## CINECA note
 
