@@ -17,6 +17,7 @@
 const crypto = require("crypto");
 const E = require("./engine.js");
 const B = require("./baseline.js");
+const SKN = require("./skins.js");   // internal-pattern skins (stripe/checker/cross/…) for more visual variety
 
 // ============================================================ cell / grid utils
 const blank = (H, W) => Array.from({ length: H }, () => new Array(W).fill(0));
@@ -36,7 +37,11 @@ const HOLED = new Set(["frame", "ring"]);
 function renderScene(scene) {
   const g = blank(scene.H, scene.W);
   for (const o of scene.objects) {
-    for (const [r, c] of absCells(o)) if (r >= 0 && c >= 0 && r < scene.H && c < scene.W) g[r][c] = o.color;
+    if (o.skin && o.skin !== "plain" && o.accent != null) {   // paint an internal pattern (body + accent) over the footprint
+      for (const [dr, dc, col] of SKN.skinnedCells(o.cells, o.skin, o.color, o.accent)) { const r = o.r + dr, c = o.c + dc; if (col && r >= 0 && c >= 0 && r < scene.H && c < scene.W) g[r][c] = col; }
+    } else {
+      for (const [r, c] of absCells(o)) if (r >= 0 && c >= 0 && r < scene.H && c < scene.W) g[r][c] = o.color;
+    }
     if (o.core != null) { const [h, w] = bbox(o.cells), rr = o.r + (h >> 1), cc = o.c + (w >> 1); if (rr < scene.H && cc < scene.W) g[rr][cc] = o.core; }   // core overwrites centre cell
   }
   return g;
@@ -201,6 +206,12 @@ function applyNode(node, scene, env = {}) {
 
 // ============================================================ scene sampler
 const KINDS_SOLID = ["square", "plus", "Lshape", "triangle", "diamond", "Tshape", "notch"];
+// MUCH wider shape vocabulary (the engine knows 23) + the skin (internal-pattern) palette → far more variety.
+const KINDS_RICH = ["square", "plus", "Lshape", "Tshape", "triangle", "diamond", "notch", "bump", "Ushape", "Cshape", "Hshape", "Zshape", "stair", "arrow", "fork", "bridge", "key", "disc"];
+const KINDS_HOLED = ["frame", "ring", "Cshape", "Ushape", "Hshape"];
+const SKINS_LIST = ["core", "border", "cross", "stripe", "checker", "diag", "split", "quadrants"];
+const SKINNABLE = new Set(["square", "diamond", "disc", "rect"]);   // skins read cleanly only on solid convex shapes
+const FULL_PALETTE = [1, 2, 3, 4, 6, 7, 8, 9];
 function placeNoOverlap(rng, H, W, specs, gap = 1, upperFrac = 1) {
   const occ = blank(H, W), out = [];
   const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
@@ -222,12 +233,18 @@ function sampleScene(rng, opts = {}) {
   const kinds = opts.kinds || KINDS_SOLID;
   const cols = []; for (let i = 0; i < K; i++) cols.push(palette[rng.int(0, palette.length - 1)]);
   const specs = [];
+  const holedKinds = opts.holedKinds || KINDS_HOLED;
   for (let i = 0; i < K; i++) {
-    const kind = opts.holedMix && i % 2 === 0 ? (rng.int(0, 1) ? "frame" : "ring") : kinds[rng.int(0, kinds.length - 1)];
+    const kind = opts.holedMix && i % 2 === 0 ? holedKinds[rng.int(0, holedKinds.length - 1)] : kinds[rng.int(0, kinds.length - 1)];
     const s = opts.sizes ? opts.sizes[i % opts.sizes.length] : (opts.size || rng.int(2, 4));
     const sp = { cells: shapeCells(kind, s), color: cols[i], kind };
     if (opts.withCore) sp.core = (opts.corePalette || [2, 1, 3])[rng.int(0, (opts.corePalette || [2, 1, 3]).length - 1)];
     if (opts.withMarker) sp.marker = rng.int(0, (opts.markers || 2) - 1);
+    // INTERNAL-PATTERN SKIN (stripe/checker/cross/…) on solid shapes → far more visual variety
+    if (opts.skinFrac && SKINNABLE.has(kind) && rng.int(0, 99) < opts.skinFrac * 100) {
+      const skins = opts.skins || SKINS_LIST; sp.skin = skins[rng.int(0, skins.length - 1)];
+      const acc = opts.accentPalette || [1, 5, 8, 9]; let a = acc[rng.int(0, acc.length - 1)]; if (a === sp.color) a = a === 1 ? 9 : 1; sp.accent = a;
+    }
     if (opts.spreadHalves) sp.cBand = i % 2 === 0 ? [0, Math.floor(W / 2) - 1] : [Math.ceil(W / 2), W];   // populate BOTH halves
     specs.push(sp);
   }
@@ -392,18 +409,27 @@ const ANCHOR_SEL = { largest: { s: "largest" }, smallest: { s: "smallest" }, hol
 // build ONE dependent program: a bind + relational chain, or a contextual dispatch.
 function sampleChain(rng, depth) {
   const pick = a => a[rng.int(0, a.length - 1)];
-  const palette = [2, 3, 4, 6, 7, 8];
+  const palette = FULL_PALETTE;
+  // a richly varied scene: wide shape vocabulary + internal skins + cores + holed mix + full palette.
+  const richScene = extra => r => sampleScene(r, Object.assign({ H: r.int(15, 20), W: r.int(16, 22), K: r.int(4, 7), palette, kinds: KINDS_RICH, holedMix: r.int(0, 1) === 0, skinFrac: 0.4, withCore: r.int(0, 2) === 0, sizes: [2, 3, 4, 5, 3, 2, 4], gap: 1, upperFrac: 0.85 }, extra));
+  const OPW = [{ t: { t: "outline" }, w: "is outlined" }, { t: { t: "fall", dir: pick(DIRS) }, w: "falls" }, { t: { t: "fill_hole" }, w: "is filled solid" }, { t: { t: "rotate_90" }, w: "is rotated 90°" }, { t: { t: "mirror_h" }, w: "is mirrored" }, { t: { t: "recolor", color: pick(palette) }, w: "is recoloured" }];
   // ---- pattern CONTEXTUAL (a single rule whose effect is decided per-object by a property) ----
   if (rng.int(0, 2) === 0) {
-    const key = pick([{ k: "size_class", vals: ["large", "small"] }, { k: "has_hole", vals: ["holed", "solid"] }]);
-    const opPool = [{ t: { t: "outline" }, w: "is outlined" }, { t: { t: "fall", dir: "down" }, w: "falls to the floor" }, { t: { t: "fill_hole" }, w: "is filled solid" }, { t: { t: "rotate_90" }, w: "is rotated 90°" }];
-    const a = pick(opPool); let b = pick(opPool); while (b.w === a.w) b = pick(opPool);
-    const cases = { [key.vals[0]]: a.t, [key.vals[1]]: b.t };
-    const rule = `Each object is transformed by its ${key.k === "size_class" ? "SIZE" : "shape"}: ${key.vals[0]} objects → ${a.w}; ${key.vals[1]} objects → ${b.w}. (The operation DEPENDS on each object's own property.)`;
+    const key = pick([
+      { k: "size_class", vals: ["large", "small"], lab: "SIZE" },
+      { k: "has_hole", vals: ["holed", "solid"], lab: "whether it is hollow" },
+      { k: "orientation", vals: ["tall", "wide"], lab: "ORIENTATION" },
+      { k: "quadrant", vals: ["TL", "TR", "BL", "BR"], lab: "QUADRANT" },
+      { k: "shape_kind", vals: null, lab: "SHAPE" },
+    ]);
+    const vals = key.vals || ["square", "triangle", "plus"];                 // shape_kind: pick a few kinds to route
+    const ops = []; const usedW = new Set(); for (const v of vals) { let o = pick(OPW); let g = 0; while (usedW.has(o.w) && g++ < 8) o = pick(OPW); usedW.add(o.w); ops.push(o); }
+    const cases = {}; vals.forEach((v, i) => cases[v] = ops[i].t);
+    const rule = `Each object is transformed by its ${key.lab}: ` + vals.map((v, i) => `${v} → ${ops[i].w}`).join("; ") + ". (The operation DEPENDS on each object's own property.)";
     return {
       name: "ctx_" + key.k, prior: "contextual-dispatch", rule, concepts: ["contextual", "dispatch", "per-object", key.k],
       node: { op: "dispatch", key: { k: key.k }, cases, default: { t: "identity" } },
-      sampler: r => sampleScene(r, { H: r.int(14, 18), W: r.int(15, 20), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: true, sizes: [2, 2, 4, 5, 3, 4], gap: 1 }),
+      sampler: richScene({ holedMix: key.k === "has_hole", spreadHalves: key.k === "quadrant" }),
     };
   }
   // ---- pattern ANCHOR-RELATIONAL (find a special object; the REST of the scene is transformed relative to it) ----
@@ -417,7 +443,8 @@ function sampleChain(rng, depth) {
   const texts = [`find ${ANCHORS[anchor]}`];
   // optional DEPENDENT pre-op on the anchor itself (depth ≥ 3): transform the anchor, then relate the rest to it
   if (depth >= 3 && ANCHOR_SEL[anchor]) {
-    const pre = pick([{ t: { t: "outline" }, w: "outline it" }, { t: { t: "recolor", color: pick(palette) }, w: "recolour it " + COLNAME[pick(palette)] }]);
+    const pc = pick(palette);
+    const pre = pick([{ t: { t: "outline" }, w: "outline it" }, { t: { t: "fill_hole" }, w: "fill it solid" }, { t: { t: "recolor", color: pc }, w: "recolour it " + COLNAME[pc] }]);
     steps.push({ op: "apply", sel: ANCHOR_SEL[anchor], transform: pre.t }); texts.push(pre.w);
   }
   steps.push({ op: "apply", sel: { s: "all" }, transform: rel.t }); texts.push(rel.w);
@@ -426,7 +453,7 @@ function sampleChain(rng, depth) {
     name: "anchor_" + anchor + "_" + rel.c, prior: "anchor-relational", rule,
     concepts: ["relational", "anchor", "dependency", rel.c, anchor],
     node: { op: "seq", steps },
-    sampler: r => sampleScene(r, { H: r.int(15, 19), W: r.int(16, 22), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: anchor === "holed", sizes: [2, 3, 5, 4, 2, 3], gap: 1, upperFrac: 0.8 }),
+    sampler: richScene({ holedMix: anchor === "holed" }),
   };
 }
 // generate N verified composed tasks (teaching-gated: OUT≠IN on every pair + examples vary).
