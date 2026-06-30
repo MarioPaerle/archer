@@ -366,6 +366,71 @@ function buildDemo(name, opts = {}) {
   return buildProgramTask(prog, opts);
 }
 
+// ============================================================ CHAIN sampler — concatenate MANY rules (op:"seq")
+// The thing Mario wants: tasks that mix 2–4 rules IN A ROW. Samples a `seq` of distinct rule-stages over the
+// SAME typed combinator layer (selectors × transforms × dispatch), so every chain is one serialisable program
+// (the AST = the induction LABEL) that renders to a coherent (IN→OUT) task. Colours are GROUNDED (recolour only
+// to a colour already in the scene — no "magic" colours). buildProgramTask + the teaching gate verify each one.
+const COLNAME = { 1: "blue", 2: "red", 3: "green", 4: "yellow", 5: "grey", 6: "magenta", 7: "orange", 8: "cyan", 9: "maroon" };
+const DIRS = ["down", "up", "left", "right"];
+const SIDES = ["left", "right", "top", "bottom"];
+function selText(sel) {
+  switch (sel.s) {
+    case "all": return "every object"; case "largest": return "the largest object"; case "smallest": return "the smallest object";
+    case "by_size": return "the " + sel.cls + " objects"; case "by_color": return "the " + (COLNAME[sel.color] || sel.color) + " objects";
+    case "in_region": return "objects in the " + sel.region.side + " half"; default: return "the selected objects";
+  }
+}
+// a stage = { node, text, concept }. `ctx` carries the active colour (always present in the scene) + rng + a used-set.
+function sampleStage(rng, ctx) {
+  const pick = a => a[rng.int(0, a.length - 1)];
+  const ac = ctx.active;
+  const selPool = () => pick([
+    { s: "all" }, { s: "largest" }, { s: "smallest" },
+    { s: "by_size", cls: pick(["large", "small"]) },
+    { s: "by_color", color: ac },
+    { s: "in_region", region: { reg: "half", side: pick(SIDES) } },
+  ]);
+  const kinds = ["geo", "outline", "fill", "gravity", "recolor", "dispatch"].filter(k => !ctx.used.has(k) || ctx.used.size >= 4);
+  const kind = pick(kinds.length ? kinds : ["geo"]); ctx.used.add(kind);
+  if (kind === "geo") { const sel = selPool(), t = pick([{ t: "mirror_h", w: "mirror left-right" }, { t: "flip_v", w: "flip top-bottom" }, { t: "rotate_90", w: "rotate 90°" }]); return { node: { op: "apply", sel, transform: { t: t.t } }, text: t.w + " " + selText(sel), concept: "geometry" }; }
+  if (kind === "outline") { const sel = pick([{ s: "all" }, { s: "largest" }, { s: "by_size", cls: "large" }]); return { node: { op: "apply", sel, transform: { t: "outline" } }, text: "outline " + selText(sel), concept: "topology" }; }
+  if (kind === "fill") { const sel = pick([{ s: "largest" }, { s: "has_hole", holed: true }]); return { node: { op: "apply", sel, transform: { t: "fill_hole" } }, text: "fill " + (sel.s === "has_hole" ? "the hollow objects" : "the largest object") + " solid", concept: "topology" }; }
+  if (kind === "gravity") { const dir = pick(DIRS), sel = pick([{ s: "by_color", color: ac }, { s: "all" }, { s: "by_size", cls: "large" }]); return { node: { op: "apply", sel, transform: { t: "fall", dir } }, text: selText(sel) + " fall " + dir, concept: "physics" }; }
+  if (kind === "recolor") { const sel = pick([{ s: "largest" }, { s: "smallest" }, { s: "by_size", cls: "small" }, { s: "in_region", region: { reg: "half", side: pick(SIDES) } }]); return { node: { op: "apply", sel, transform: { t: "recolor", color: ac } }, text: "recolour " + selText(sel) + " " + COLNAME[ac], concept: "color" }; }
+  // dispatch: per-object different op by a key — a whole rule in one stage
+  const key = pick([{ k: "size_class" }, { k: "color" }]);
+  const cases = key.k === "size_class" ? { large: { t: "outline" }, small: { t: "fall", dir: "down" } } : { [ac]: { t: "fall", dir: "down" } };
+  const txt = key.k === "size_class" ? "outline large objects and drop small ones" : (COLNAME[ac] + " objects fall, others stay");
+  return { node: { op: "dispatch", key, cases, default: { t: "identity" } }, text: txt, concept: "dispatch" };
+}
+function sampleChain(rng, depth) {
+  const palette = [2, 3, 4, 6, 7, 8], active = palette[rng.int(0, palette.length - 1)];
+  const ctx = { active, rng, used: new Set() };
+  const stages = []; for (let i = 0; i < depth; i++) stages.push(sampleStage(rng, ctx));
+  const node = { op: "seq", steps: stages.map(s => s.node) };
+  const rule = "Apply these rules IN ORDER: " + stages.map((s, i) => (i + 1) + ") " + s.text).join("; ") + ".";
+  const concepts = ["composition", "sequence", ...new Set(stages.map(s => s.concept))];
+  return {
+    name: "chain" + depth + "_" + stages.map(s => s.concept[0]).join(""),
+    prior: "composed-chain", rule, concepts, node,
+    sampler: r => sampleScene(r, { H: r.int(15, 19), W: r.int(16, 22), K: r.int(4, 6), palette, kinds: KINDS_SOLID, holedMix: true, withCore: false, ensureColors: [active, active], spreadHalves: true, sizes: [2, 3, 4, 3, 2, 4], gap: 1, upperFrac: 0.7 }),
+  };
+}
+// generate N verified composed tasks (teaching-gated: OUT≠IN on every pair + examples vary).
+function generateComposed(opts = {}) {
+  const n = opts.n || 12, depth = opts.depth || 3, rng = E.makeRng((opts.seed || 1) * 2654435761 + 97);
+  const out = []; let guard = 0;
+  while (out.length < n && guard++ < n * 30) {
+    const d = Array.isArray(depth) ? depth[rng.int(0, depth.length - 1)] : depth;
+    let task; try { task = buildProgramTask(sampleChain(rng, d), { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    const idOk = task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out)) && new Set(task.examples.map(e => JSON.stringify(e.out))).size >= 2;
+    if (!idOk) continue;
+    out.push(task);
+  }
+  return { records: out, emitted: out.length };
+}
+
 // ============================================================ self-test
 function selfTest() {
   const names = Object.keys(LIBRARY);
@@ -403,6 +468,12 @@ if (require.main === module) {
   const args = process.argv.slice(2);
   const flag = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
   if (args.includes("--self-test")) { selfTest(); console.log("program.js: self-test PASS"); }
+  else if (args.includes("--compose")) {   // CHAIN of many rules → verified composed corpus (jsonl)
+    const n = +flag("--compose", 12), depth = (flag("--depth", "2,3,4")).split(",").map(Number), o = flag("-o", null);
+    const r = generateComposed({ n, depth, seed: +flag("--seed", 1) });
+    if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} composed tasks → ${o}`); }
+    else { for (const t of r.records) console.error(`# depth ${t.meta.depth}  ${t.meta.rule}`); console.error(`\n${r.emitted} composed tasks`); }
+  }
   else if (args.includes("--list")) { for (const [k, v] of Object.entries(LIBRARY)) console.log(k.padEnd(30), "—", v.rule); }
   else if (args.includes("--demo")) {
     const name = flag("--demo", "gravity_on_red"), task = buildDemo(name, { seed: +flag("--seed", 1) });
@@ -417,5 +488,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
+  sampleChain, generateComposed,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };
