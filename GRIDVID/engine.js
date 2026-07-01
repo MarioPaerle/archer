@@ -1696,8 +1696,14 @@
     if (opts.preCutSelect) incoherent.push("selection (extract/remove) ran BEFORE the IN snapshot → the rule is invisible in IN");
     const tIn = lastOf(task.in), tOut = lastOf(task.out);
     if (nonBg(tIn) < 2) incoherent.push("IN is near-empty (<2 cells) — nothing for the rule to act on");
+    // NO pair (train or test) may have a near-EMPTY output — a degenerate/unsolvable task (e.g. a 'keep the odd
+    // one' whose test has no odd one → everything vanishes). This was passing because OUT != IN. Kill it.
+    pairs.forEach((p, i) => { if (p.out.length && nonBg(lastOf(p.out)) < 2) incoherent.push("pair " + i + " OUT is (near-)empty — degenerate/unsolvable rule instance"); });
+    // the test-output density must be in the same ballpark as the train outputs (a 'pieno→vuoto' test is degenerate)
+    const outN = task.examples.map(e => nonBg(lastOf(e.out))), meanOut = outN.reduce((a, b) => a + b, 0) / (outN.length || 1);
+    if (meanOut >= 3 && nonBg(tOut) < 0.25 * meanOut) incoherent.push("TEST output is far sparser than the train outputs — the rule breaks on the test (degenerate)");
     const d = diff(tIn, tOut);
-    if (d !== Infinity && d > 0 && d < 2) incoherent.push("OUT differs from IN by <2 cells — the change is trivial/invisible");
+    if (d !== Infinity && d > 0 && d < Math.max(3, Math.ceil(0.04 * nonBg(tIn)))) incoherent.push("OUT change is too small/trivial relative to the scene");
     const coherent = incoherent.length === 0;
     const ok = reasons.length === 0 && changed === pairs.length;
     return { ok, coherent, examplesVary, distinctExamples: distinct, changedPairs: changed, totalPairs: pairs.length, warnings, reasons, incoherent };

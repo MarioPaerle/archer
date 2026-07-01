@@ -415,6 +415,13 @@ function buildProgramTask(prog, opts = {}) {
   let first = null, overlap = false;
   for (let i = 0; i < nEx; i++) { const p = mkPair(); if (!first) first = p; if (sceneOverlap(p.outScene)) overlap = true; examples.push({ in: p.in, out: p.out }); }
   const t = mkPair(); if (sceneOverlap(t.outScene)) overlap = true;
+  // sensibility gate (same spirit as engine.validateTask): reject empty/near-empty outputs and trivial changes,
+  // so program-first tasks are never degenerate (e.g. a dispatch that removes everything → empty OUT).
+  const nz = g => { let n = 0; for (const r of g) for (const x of r) if (x) n++; return n; };
+  const dif = (a, b) => { let d = 0; for (let r = 0; r < a.length; r++) for (let c = 0; c < a[0].length; c++) if (a[r][c] !== b[r][c]) d++; return d; };
+  const allPairs = examples.map(e => ({ i: e.in[0], o: e.out[0] })).concat([{ i: t.in[0], o: t.out[0] }]);
+  let degenerate = false;
+  for (const p of allPairs) { if (nz(p.o) < 2) degenerate = true; if (dif(p.i, p.o) < Math.max(3, Math.ceil(0.04 * nz(p.i)))) degenerate = true; }
   const width = t.in[0][0].length, height = t.in[0].length;
   const tree = serializeNode(prog.node);
   const depth = nodeDepth(prog.node), branches = dispatchBranches(prog.node), nobj = first.inScene.objects.length;
@@ -441,7 +448,7 @@ function buildProgramTask(prog, opts = {}) {
       },
       trace,                                         // [{step, op, nl, dsl, grid}] — IN → …thinking-grids… → OUT
       compiled_dsl: null,                            // PAN-176 future: Python compiled function
-      teaching: { ok: !overlap, coherent: !overlap, examplesVary: true, reasons: overlap ? ["output objects overlap — ambiguous solution"] : [] },
+      teaching: { ok: !overlap && !degenerate, coherent: !overlap && !degenerate, examplesVary: true, reasons: overlap ? ["output objects overlap — ambiguous"] : degenerate ? ["degenerate: empty/near-empty output or trivial change"] : [] },
     },
   };
 }
