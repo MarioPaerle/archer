@@ -29,6 +29,7 @@ const GenHard = require("./gen_hard.js");     // program-first families (correct
 const Reconcile = require("./reconcile.js");  // reconciliation layer: the LLM picks/ranks correct variants (mode-1)
 const Seeded = require("./seeded.js");         // NVARC/BARC shape: seed the LLM from REAL ARC tasks + human descriptions
 const CorpusIndex = require("./corpus_index.js"); // hierarchical DB → hand the agent RELATED exemplars (same priors)
+const SuperSuggester = require("./super_suggester.js"); // PAN-176 typed DSL-slice suggester prototype
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -39,6 +40,7 @@ function flags(args) {
     const a = args[i];
     if (a === "-o" || a === "--out") f.out = args[++i];
     else if (a === "--gif") f.gif = true;
+    else if (a === "--html") f.html = true;
     else if (a === "--png") f.png = true;
     else if (a === "--cell") f.cell = +args[++i];
     else if (a === "--fps") f.fps = +args[++i];
@@ -46,6 +48,7 @@ function flags(args) {
     else if (a === "--examples") f.examples = +args[++i];
     else if (a === "--augment") f.augment = +args[++i];
     else if (a === "--n") f.n = +args[++i];
+    else if (a === "--count") f.count = +args[++i];
     else if (a === "--seed") f.seed = +args[++i];
     else if (a === "--no-d4") f.noD4 = true;
     else if (a === "--no-color") f.noColor = true;
@@ -69,11 +72,16 @@ function flags(args) {
     else if (a === "--num-nodes") f.numNodes = +args[++i];
     else if (a === "--endpoint") f.endpoint = args[++i];
     else if (a === "--model") f.model = args[++i];
+    else if (a === "--temp") f.temp = +args[++i];
+    else if (a === "--maxtok") f.maxtok = +args[++i];
     else if (a === "--retries") f.retries = +args[++i];
     else if (a === "--stub") f.stub = true;
     else if (a === "--static") f.static = true;
+    else if (a === "--dynamic") f.dynamic = true;
     else if (a === "--hard") f.hard = true;
     else if (a === "--objective") f.objective = args[++i];
+    else if (a === "--mode") f.mode = args[++i];
+    else if (a === "--difficulty") f.difficulty = args[++i];
     else f._.push(a);
   }
   return f;
@@ -193,13 +201,18 @@ function* objectiveRecords(task, which = "all") {
     const seqs = task.examples.flatMap(e => [e.in, e.out]).concat([task.in, task.out]);
     for (const seq of seqs) for (let t = 0; t + 1 < seq.length; t++) yield { objective: "next_frame", id, frame: seq[t], next: seq[t + 1] };
   }
-  if (want("inverse_dynamics")) {   // the IN→OUT transition → the rule/program that caused it
-    const program = (task.meta.representation || {}).program || [];
-    for (const e of task.examples) yield { objective: "inverse_dynamics", id, in: last(e.in), out: last(e.out), rule: task.meta.rule, program };
+  if (want("inverse_dynamics")) {   // the IN→OUT transition → the rule/program that caused it (INDUCTION label)
+    const P = task.meta.program || {};
+    const program = (task.meta.representation || {}).program || P.tree || [];   // engine scene-DSL OR program.js AST
+    const dsl_text = P.dsl_text || null, nl = P.nl || task.meta.rule || null;   // the aligned NL+DSL rule labels
+    for (const e of task.examples) yield { objective: "inverse_dynamics", id, in: last(e.in), out: last(e.out), rule: task.meta.rule, nl, dsl_text, program };
   }
   if (want("object_aux")) {   // read object masks/bbox/color/count — segmented from the ACTUAL grid (robust to augmentation)
     const grid = last(task.in), objs = segmentGrid(grid);
     yield { objective: "object_aux", id, grid, objects: objs, count: objs.length };
+  }
+  if (want("solve_trace") && task.meta.trace) {   // the step-by-step "thinking-grids": IN → intermediate grids → OUT
+    yield { objective: "solve_trace", id, rule: task.meta.rule, nl: (task.meta.program || {}).nl, steps: task.meta.trace };
   }
 }
 // 4-connected same-colour components of a grid (bg=0) → {color, r, c, h, w, size, cells(relative)}. Robust object readout.
@@ -218,7 +231,7 @@ function segmentGrid(g, bg = 0) {
 // worker entry (PAN-123): each worker runs a disjoint seed slice and posts back its accepted tasks.
 function runWorker() {
   const wd = workerData || {};
-  const res = genDataset({ templatesDir: wd.templatesDir, n: wd.n, seedBase: wd.seedBase, wildFrac: wd.wildFrac, examples: wd.examples });
+  const res = genDataset({ templatesDir: wd.templatesDir, n: wd.n, seedBase: wd.seedBase, wildFrac: wd.wildFrac, examples: wd.examples, maxAttempts: wd.maxAttempts, static: wd.static, hard: wd.hard });
   parentPort.postMessage({ accepted: res.accepted, stats: res.stats });
 }
 
@@ -226,7 +239,7 @@ function runWorker() {
 // Build a descriptor per library function (template) so the generator can curate a SMALL, coherent slice of the
 // DSL per task. The small model never sees the whole grammar — only the sampled menu — so (a) complexity stays
 // low, (b) composition is forced (fresh combo each time, not a template to copy), (c) adding functions is safe.
-const WHOLE_GRID_RE = /\b(grid_rotate|grid_flip|grid_map|sort_rows|solve)\b/;
+const WHOLE_GRID_RE = /\b(grid_rotate|grid_flip|grid_map|sort_rows|solve|grid_complete|unfold|crop)\b/;
 function buildFunctionRegistry(templatesDir, seedBase = 1) {
   const files = fs.readdirSync(templatesDir).filter(x => x.endsWith(".txt"));
   if (!files.length) throw new Error("no .txt templates in " + templatesDir);
@@ -640,7 +653,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
       const all = [], agg = { attempts: 0, accepted: 0, duplicates: 0, errors: 0, rejected: 0, byReason: {}, byTemplate: {} };
       let done = 0;
       for (let wId = 0; wId < workers; wId++) {
-        const w = new Worker(__filename, { workerData: { templatesDir, n: share, seedBase: seedBase + wId * 1000003, wildFrac: f.wildFrac, examples: f.examples } });
+        const w = new Worker(__filename, { workerData: { templatesDir, n: share, seedBase: seedBase + wId * 1000003, wildFrac: f.wildFrac, examples: f.examples, maxAttempts: f.maxAttempts, static: f.static, hard: f.hard } });
         w.on("message", m => { all.push(...m.accepted); agg.attempts += m.stats.attempts; agg.rejected += m.stats.rejected; agg.duplicates += m.stats.duplicates; agg.errors += m.stats.errors; for (const k in m.stats.byReason) agg.byReason[k] = (agg.byReason[k] || 0) + m.stats.byReason[k]; });
         w.on("error", e => console.error("worker " + wId + ": " + e.message));
         w.on("exit", () => {
@@ -868,6 +881,20 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     else console.log(p);
   },
 
+  "super-suggest"(args) {
+    const f = flags(args);
+    const count = f.n || f.count || 20, seed = f.seed || f.seedBase || 1;
+    const payload = SuperSuggester.suggestTasks({ seed, count, mode: f.mode || "all", difficulty: f.difficulty || null });
+    payload.compatibility_db = SuperSuggester.getCompatibilityDb();
+    if (f.out) {
+      fs.mkdirSync(path.dirname(f.out) || ".", { recursive: true });
+      if (f.html) fs.writeFileSync(f.out, SuperSuggester.renderHtml(payload));
+      else fs.writeFileSync(f.out, JSON.stringify(payload, null, 2) + "\n");
+      console.log("super-suggest → " + f.out);
+    } else if (f.html) console.log(SuperSuggester.renderHtml(payload));
+    else for (const rec of payload.records) console.log(JSON.stringify(rec));
+  },
+
   new(args) {
     const f = flags(args), name = f._[0], kind = f._[1] || "basic";
     if (!name) return console.log("usage: cli.js new <name> [basic|sorter|shooter|liquid|voronoi]");
@@ -1092,8 +1119,10 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     checks.push(["generate-dataset yields only coherent teaching tasks", ds.accepted.length === 12 && ds.accepted.every(a => a.task.meta.teaching.ok && a.task.meta.teaching.coherent)]);
     checks.push(["generate-dataset dedups (unique ids) + spans templates", new Set(ds.accepted.map(a => a.id)).size === 12 && new Set(ds.accepted.map(a => a.template)).size >= 4]);
     // hierarchical function-menu proposer (PAN-132 / G0)
-    const reg = buildFunctionRegistry(path.join(__dirname, "scenes", "library"), 1);
-    checks.push(["function registry covers the library with categories", reg.length === 60 && reg.every(r => r.category) && new Set(reg.map(r => r.category)).size >= 6]);
+    const libDir = path.join(__dirname, "scenes", "library");
+    const reg = buildFunctionRegistry(libDir, 1);
+    const libCount = fs.readdirSync(libDir).filter(x => x.endsWith(".txt")).length;
+    checks.push(["function registry covers the library with categories", reg.length === libCount && reg.every(r => r.category) && new Set(reg.map(r => r.category)).size >= 6]);
     const menu = proposeMenu(E.makeRng(123), reg, { k: 3 });
     const augOk = menu.augmentations.every(a => menu.functions.every(fn => reg.find(r => r.name === fn.name).safeAug.includes(a)));
     const wholeOk = menu.functions.filter(fn => fn.wholeGrid).length <= 1;
@@ -1107,6 +1136,12 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const dispFn = reg.find(r => r.name === "dispatch_symmetry");
     const dispPrompt = buildPrompt(reg, { functions: [{ name: dispFn.name, category: dispFn.category, rule: dispFn.rule, wholeGrid: false }], augmentations: [], composeHint: "", difficulty: 0.6, k: 1 }, { templatesDir: path.join(__dirname, "scenes", "library") });
     checks.push(["prompt-kit exposes predicates + dispatch/it/where for conditional templates", /PREDICATES \(the PRED values/.test(dispPrompt) && /\bconvex\b/.test(dispPrompt) && /^\s+dispatch SEL by PRED/m.test(dispPrompt) && /^\s+it\b/m.test(dispPrompt) && /^\s+where PRED/m.test(dispPrompt)]);
+    const sf = flags(["generate-llm", "--dynamic", "--temp", "0.4", "--maxtok", "4096"]);
+    checks.push(["flags parse dynamic generation controls", sf.dynamic === true && sf.temp === 0.4 && sf.maxtok === 4096]);
+    const ss = SuperSuggester.suggestTasks({ seed: 3, count: 12 });
+    checks.push(["super-suggester emits typed dataset-shaped records", ss.records.length === 12 && ss.records.every(r => r.unique_code && r.depth >= 1 && r.dsl_suggestions && r.dsl_representation && r.object_level_json_representation && r.json_grid_representation && r.python_compiled_dsl_function === null)]);
+    const ssStatic = SuperSuggester.suggestTasks({ seed: 3, count: 8, mode: "static", difficulty: "3-7" });
+    checks.push(["super-suggester applies mode + difficulty filters", ssStatic.records.length === 8 && ssStatic.normalized_difficulty && ssStatic.records.every(r => r.difficulty >= 0.3 && r.difficulty <= 0.7 && !r.dsl_suggestions.functions.some(f => SuperSuggester.FUNCTION_SCHEMAS.find(s => s.name === f.name).dynamic))]);
     // --- detector predicates (G3) + context-sensitive rule (G2): dispatch / classify / where ---
     const pw = E.runScene("grid 16 16\nspawn square 3 at 1 1 color 2\nspawn Lshape 3 at 1 7 color 3\nspawn frame 3 3 at 7 1 color 4\nspawn line 4 at 7 7 color 5", { noSim: true });
     const pk = {}; pw.bodies.forEach(b => (pk[b.kind] = b));
@@ -1182,7 +1217,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
 function main(argv) {
   const cmd = argv[0];
   if (!cmd || cmd === "-h" || cmd === "--help") {
-    console.log("gridvid CLI — commands: gen · task · generate-dataset · generate-llm · export-objectives · propose · prompt · augment · render · gallery · shapes · dsl · validate · new · self-test\n  gen <scene…> --augment K [--wild] [--rate] [--zoom-aug] [--zoom-in-only] [--materialize] [--gif]\n  generate-dataset --n N [-o dir] [--shards K] [--workers W] [--seed-base S] [--templates DIR] [--wild-frac F] [--max-attempts M] [--num-nodes W --node-rank R]\n  generate-llm     --n N (--endpoint URL [--model NAME] | --stub) [--retries R] [--k K] [--num-nodes W --node-rank R] [-o dir]   Qwen writes DSL → engine verifies → self-corrects\n  export-objectives <dataset-dir> [-o file.jsonl] [--objective arc_pair|next_frame|inverse_dynamics|object_aux|all]   prodigy-task → training records\n  propose --n N [--k K] [--seed-base S] [--templates DIR] [-o file]   hierarchical function-menu for a small model\n  prompt  [--k K] [--seed-base S] [--templates DIR] [-o file]         full small-model prompt for one sampled task\n  augment <video…> --materialize [--n K]              block-by-block final-object appearance\n  gallery <dir> [--open]                              render all to GIF + write a gallery\nrun `node cli.js dsl` for the scene grammar.");
+    console.log("gridvid CLI — commands: gen · task · generate-dataset · generate-llm · export-objectives · propose · prompt · super-suggest · augment · render · gallery · shapes · dsl · validate · new · self-test\n  gen <scene…> --augment K [--wild] [--rate] [--zoom-aug] [--zoom-in-only] [--materialize] [--gif]\n  generate-dataset --n N [-o dir] [--shards K] [--workers W] [--seed-base S] [--templates DIR] [--wild-frac F] [--max-attempts M] [--num-nodes W --node-rank R]\n  generate-llm     --n N (--endpoint URL [--model NAME] | --stub) [--dynamic] [--temp F] [--maxtok N] [--retries R] [--k K] [--num-nodes W --node-rank R] [-o dir]   Qwen writes DSL → engine verifies → self-corrects\n  export-objectives <dataset-dir> [-o file.jsonl] [--objective arc_pair|next_frame|inverse_dynamics|object_aux|all]   prodigy-task → training records\n  propose --n N [--k K] [--seed-base S] [--templates DIR] [-o file]   hierarchical function-menu for a small model\n  prompt  [--k K] [--seed-base S] [--templates DIR] [-o file]         full small-model prompt for one sampled task\n  super-suggest --n N [--seed N] [-o file.json|file.html] [--html]    typed PAN-176 DSL-slice suggestions\n  augment <video…> --materialize [--n K]              block-by-block final-object appearance\n  gallery <dir> [--open]                              render all to GIF + write a gallery\nrun `node cli.js dsl` for the scene grammar.");
     return;
   }
   if (!cmds[cmd]) { console.error("unknown command: " + cmd); process.exit(1); }

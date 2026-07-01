@@ -288,6 +288,75 @@ function objectMeta(scene) {
   return scene.objects.map(o => ({ id: o.id, kind: o.kind, color: o.color, core: o.core != null ? o.core : null, area: area(o), center: centerOf(o).map(x => +x.toFixed(1)) }));
 }
 
+// ============================================================ AST → NL + DSL-text (the aligned rule labels)
+// NL ≡ DSL by construction: nlNode is a total linearisation of the same AST the engine executes.
+const _CN = { 1: "blue", 2: "red", 3: "green", 4: "yellow", 5: "grey", 6: "magenta", 7: "orange", 8: "cyan", 9: "maroon" };
+function nlSel(sel) {
+  if (!sel) return "every object";
+  switch (sel.s) {
+    case "all": return "every object"; case "largest": return "the largest object"; case "smallest": return "the smallest object";
+    case "by_size": return "the " + sel.cls + " objects"; case "by_color": return "the " + (_CN[sel.color] || sel.color) + " objects";
+    case "by_kind": return "the " + sel.kind + "s"; case "has_hole": return sel.holed !== false ? "the hollow objects" : "the solid objects";
+    case "in_region": return "objects in the " + (sel.region && sel.region.side || "region") + " half"; case "by_orientation": return "the " + sel.orient + " objects";
+    default: return "the selected objects";
+  }
+}
+function nlTransform(t) {
+  if (!t) return "is left unchanged";
+  switch (t.t) {
+    case "identity": return "is left unchanged"; case "recolor": return "is recoloured " + (_CN[t.color] || t.color);
+    case "recolor_core": return "gets a " + (_CN[t.color] || t.color) + " core"; case "swap_color": return "swaps its colours";
+    case "mirror_h": return "is mirrored left-right"; case "flip_v": return "is flipped top-bottom";
+    case "rotate_90": return "is rotated 90°"; case "rotate_180": return "is rotated 180°";
+    case "outline": return "is outlined (hollowed)"; case "fill_hole": return "is filled solid";
+    case "translate": return "is shifted"; case "remove": return "is removed"; case "fall": return "falls " + (t.dir || "down");
+    case "recolor_to": return "takes the anchor's colour"; case "copy_shape": return "morphs into the anchor's shape"; case "reflect_pos": return "is mirrored across the anchor";
+    default: return "is transformed (" + t.t + ")";
+  }
+}
+const _ANCHOR = { largest: "the largest object", smallest: "the smallest object", unique_color: "the uniquely-coloured object", unique_shape: "the odd-shaped object", holed: "the hollow object" };
+function nlNode(node) {
+  if (!node) return "";
+  switch (node.op) {
+    case "bind": return "find " + (_ANCHOR[node.pick] || node.pick);
+    case "apply": return nlSel(node.sel) + " " + nlTransform(node.transform);
+    case "dispatch": { const k = node.key && node.key.k || "property"; const cs = Object.entries(node.cases || {}).map(([v, t]) => (_CN[v] || v) + " → " + nlTransform(t)); return "each object, by its " + k + ": " + cs.join("; "); }
+    case "mask": return "within the " + (node.region && node.region.side || node.region && node.region.q || "region") + ", " + nlNode(node.node);
+    case "seq": return node.steps.map((s, i) => (i === 0 ? "First " : "then ") + nlNode(s)).join("; ");
+    case "parallel": return node.branches.map(nlNode).join(", and in parallel ");
+    case "repeat": return "repeat " + node.n + "×: " + nlNode(node.node);
+    case "overlay": return "overlay extra objects";
+    default: return node.op;
+  }
+}
+function dslText(node) {
+  if (!node) return "";
+  const a = x => JSON.stringify(x).replace(/"/g, "");
+  switch (node.op) {
+    case "bind": return "bind(" + node.name + "=" + node.pick + ")";
+    case "apply": return "apply(" + (node.sel ? (node.sel.s + (node.sel.color != null ? ":" + node.sel.color : node.sel.cls ? ":" + node.sel.cls : "")) : "all") + ", " + (node.transform ? node.transform.t + (node.transform.color != null ? ":" + node.transform.color : node.transform.dir ? ":" + node.transform.dir : node.transform.ref ? ":" + node.transform.ref : "") : "identity") + ")";
+    case "dispatch": return "dispatch(" + (node.key && node.key.k) + "){" + Object.entries(node.cases || {}).map(([v, t]) => v + ":" + t.t + (t.dir ? ":" + t.dir : t.color != null ? ":" + t.color : "")).join(",") + "}";
+    case "mask": return "mask(" + a(node.region) + ", " + dslText(node.node) + ")";
+    case "seq": return "seq(" + node.steps.map(dslText).join(" ▷ ") + ")";
+    case "parallel": return "parallel(" + node.branches.map(dslText).join(" | ") + ")";
+    case "repeat": return "repeat(" + node.n + ", " + dslText(node.node) + ")";
+    default: return node.op;
+  }
+}
+// runWithTrace — the KEYSTONE: execute a program while capturing the intermediate scene after each TOP-LEVEL
+// step. For a `seq` this is the human "thinking-grids" trace, for free (the engine already computes each `acc`).
+function runWithTrace(node, scene, env = {}) {
+  const steps = [];
+  if (node.op === "seq") {
+    let acc = cloneScene(scene);
+    for (const step of node.steps) { acc = applyNode(step, acc, env); steps.push({ op: step.op, nl: nlNode(step), dsl: dslText(step), scene: acc }); }
+    return { scene: acc, steps };
+  }
+  const out = applyNode(node, scene, env);
+  steps.push({ op: node.op, nl: nlNode(node), dsl: dslText(node), scene: out });
+  return { scene: out, steps };
+}
+
 // ============================================================ task builder
 // two non-removed objects sharing a cell ⇒ they overwrite each other ⇒ the solution is AMBIGUOUS. Reject.
 function sceneOverlap(scene) {
@@ -306,6 +375,11 @@ function buildProgramTask(prog, opts = {}) {
   const tree = serializeNode(prog.node);
   const depth = nodeDepth(prog.node), branches = dispatchBranches(prog.node), nobj = first.inScene.objects.length;
   const difficulty = +Math.min(1, 0.4 + 0.07 * depth + 0.05 * branches + 0.02 * nobj).toFixed(2);
+  const nl = nlNode(prog.node), dtext = dslText(prog.node);
+  // the KEYSTONE: the step-by-step "thinking-grids" execution trace on the test pair (each step engine-verified)
+  const tr = runWithTrace(prog.node, t.inScene);
+  const trace = [{ step: 0, op: "input", nl: "the input scene", grid: t.in[0] }]
+    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: renderScene(s.scene) })));
   const id = "PRG-" + crypto.createHash("sha1").update(JSON.stringify([prog.name, examples, t.in, t.out])).digest("hex").slice(0, 8);
   return {
     format: "prodigy-task", version: 1, width, height, palette: "arc10", fps: 1,
@@ -314,10 +388,12 @@ function buildProgramTask(prog, opts = {}) {
       id, rule: prog.rule, language_description: prog.rule, concepts: prog.concepts, prior: prog.prior || "composed-object",
       difficulty, depth, template: "prog2:" + prog.name, source: "program.js", n_examples: nEx,
       program: {                                    // program.json (inline): the typed AST + labels + targets
-        name: prog.name, tree, dispatch_branches: branches, depth,
+        name: prog.name, tree, dsl_text: dtext, nl,          // the rule THREE aligned ways: AST + DSL-text + NL
+        dispatch_branches: branches, depth,
         relations: sceneRelations(t.inScene), objects: objectMeta(t.inScene),
-        targets: ["arc_pair", "next_frame", "inverse_dynamics", "object_aux", "relation_aux"],
+        targets: ["arc_pair", "next_frame", "inverse_dynamics", "object_aux", "relation_aux", "solve_trace"],
       },
+      trace,                                         // [{step, op, nl, dsl, grid}] — IN → …thinking-grids… → OUT
       compiled_dsl: null,                            // PAN-176 future: Python compiled function
       teaching: { ok: !overlap, coherent: !overlap, examplesVary: true, reasons: overlap ? ["output objects overlap — ambiguous solution"] : [] },
     },
