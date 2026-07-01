@@ -30,6 +30,7 @@ const Reconcile = require("./reconcile.js");  // reconciliation layer: the LLM p
 const Seeded = require("./seeded.js");         // NVARC/BARC shape: seed the LLM from REAL ARC tasks + human descriptions
 const CorpusIndex = require("./corpus_index.js"); // hierarchical DB → hand the agent RELATED exemplars (same priors)
 const SuperSuggester = require("./super_suggester.js"); // PAN-176 typed DSL-slice suggester prototype
+const Builder = require("./builder.js");                // the GOD BUILDER: hierarchical families + admits-graph + difficulty budget
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { isMainThread, workerData, parentPort } = require("worker_threads");
@@ -83,6 +84,7 @@ function flags(args) {
     else if (a === "--objective") f.objective = args[++i];
     else if (a === "--mode") f.mode = args[++i];
     else if (a === "--difficulty") f.difficulty = args[++i];
+    else if (a === "--target") f.target = +args[++i];
     else f._.push(a);
   }
   return f;
@@ -261,36 +263,29 @@ function buildFunctionRegistry(templatesDir, seedBase = 1) {
     };
   });
 }
-// Hierarchical sample: category → k compose-compatible functions (≤1 whole-grid op, no dup) → rule-safe
-// augmentation subset (an axis is offered only if SAFE for every chosen function) → composition hint.
+// Hierarchical sample — now the GOD BUILDER (builder.js): family taxonomy with roles (base/modifier/finisher),
+// an admits-graph so a function is composed ONLY with functions its family admits by construction, paired
+// difficulty on every function (template's own or its family band midpoint), and a difficulty-budgeted
+// composition (target sampled or --target). Same menu shape as before + {target, budget, role/family per fn}.
 function proposeMenu(rng, registry, opts = {}) {
-  const k = opts.k || 2;
-  if (opts.static) registry = registry.filter(f => !f.dynamic);   // ARC-AGI-2-shape: clean grid→grid tasks only, no physics/video
-  const byCat = {}; for (const fdef of registry) (byCat[fdef.category] || (byCat[fdef.category] = [])).push(fdef);
-  const cats = Object.keys(byCat);
-  const chosen = []; let wholeUsed = 0, attempts = 0;
-  while (chosen.length < k && attempts < k * 12) {
-    attempts++;
-    const cat = cats[rng.int(0, cats.length - 1)];                 // pick a category (balances priors)
-    const cand = byCat[cat][rng.int(0, byCat[cat].length - 1)];    // then a function within it
-    if (chosen.find(c => c.name === cand.name)) continue;          // no duplicate function
-    if (cand.wholeGrid && wholeUsed >= 1) continue;                // at most ONE whole-grid op per task
-    chosen.push(cand); if (cand.wholeGrid) wholeUsed++;
-  }
-  const axisSets = chosen.map(c => new Set(c.safeAug));
-  const augmentations = [...new Set(chosen.flatMap(c => c.safeAug))].filter(a => axisSets.every(s => s.has(a)));
-  const composeHint = wholeUsed ? "apply the whole-grid op LAST, after the object-level rules"
-    : chosen.length > 1 ? "give each building block its own region (region-dispatch), or run them in sequence"
-      : "single rule — vary the non-rule features HARD across examples";
-  const difficulty = chosen.reduce((m, c) => Math.max(m, c.difficulty || 0), 0);
-  return { functions: chosen.map(c => ({ name: c.name, category: c.category, rule: c.rule, wholeGrid: c.wholeGrid })), augmentations, composeHint, difficulty, k: chosen.length };
+  return Builder.buildMenu(rng, registry, opts);
 }
 // Serialize a menu into the compact prompt the small model sees — THE reduced DSL surface (consumed by PAN-121).
+// Role-aware: the base is THE mechanic; modifiers only refine it; the finisher is one whole-grid op, LAST.
 function menuToPrompt(menu) {
   const L = [];
   L.push("Author ONE coherent ARC-style task: a hidden rule shown by 3–5 example IN→OUT grid pairs + a test input.");
-  L.push("Use ONLY these building blocks — COMBINE them, do NOT just copy one:");
-  for (const f of menu.functions) L.push(`  • ${f.name} [${f.category}]${f.rule ? " — " + f.rule : ""}`);
+  const base = menu.functions.find(f => f.role === "base") || menu.functions[0];
+  const mods = menu.functions.filter(f => f.role === "modifier");
+  const fin = menu.functions.find(f => f.role === "finisher");
+  L.push("CORE MECHANIC (the ONE rule of the task):");
+  L.push(`  • ${base.name} [${base.family || base.category}${base.difficulty != null ? " · d" + base.difficulty : ""}]${base.rule ? " — " + base.rule : ""}`);
+  if (mods.length) {
+    L.push("REFINEMENT — use these ONLY to key/condition the core mechanic (WHICH objects, WHAT drives it) — they are NOT a second rule:");
+    for (const f of mods) L.push(`  • ${f.name} [${f.family || f.category}${f.difficulty != null ? " · d" + f.difficulty : ""}]${f.rule ? " — " + f.rule : ""}`);
+  }
+  if (fin) L.push(`FINISHER — after the object-level rule, apply ONCE to the whole grid, LAST:\n  • ${fin.name} [${fin.family || fin.category}]${fin.rule ? " — " + fin.rule : ""}`);
+  if (menu.target != null) L.push("Difficulty target ≈ " + menu.target + " (composed estimate " + menu.difficulty + ").");
   L.push("Allowed augmentations (rule-safe): " + (menu.augmentations.length ? menu.augmentations.join(", ") : "none"));
   L.push("Composition: " + menu.composeHint + ".");
   L.push("Vary every NON-rule feature (position, colour, size, count) across examples, so the rule — not the incidental features — is what's learnable.");
@@ -719,7 +714,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const stats = { attempts: 0, retried: 0, failed: 0, duplicates: 0 }, cap = f.maxAttempts || n * 8; let i = 0;
     while (accepted.length < n && stats.attempts < cap) {
       stats.attempts++;
-      const menu = proposeMenu(rng, registry, { k, static: useStatic });
+      const menu = proposeMenu(rng, registry, { k, static: useStatic, target: f.target });   // god builder: --target sets the difficulty budget
       const drawGlyphs = rng() < (f.glyphFrac != null ? +f.glyphFrac : 0.25);   // sometimes PUSH the model to draw its own shapes
       const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: useStatic, drawGlyphs });
       let callModel;
@@ -1135,6 +1130,20 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const wholeOk = menu.functions.filter(fn => fn.wholeGrid).length <= 1;
     checks.push(["propose menu: k functions, ≤1 whole-grid, augmentations rule-safe for all", menu.functions.length === 3 && wholeOk && augOk]);
     checks.push(["propose is deterministic per seed", JSON.stringify(proposeMenu(E.makeRng(9), reg, { k: 2 })) === JSON.stringify(proposeMenu(E.makeRng(9), reg, { k: 2 }))]);
+    // GOD BUILDER (builder.js): 1 base + admitted refinements + paired difficulty + budget breakdown
+    try { Builder.selfTest(); checks.push(["god builder self-test (families, admits-graph, budget, determinism)", true]); }
+    catch (e) { checks.push(["god builder self-test (families, admits-graph, budget, determinism): " + e.message, false]); }
+    const gm = proposeMenu(E.makeRng(77), reg, { k: 3, static: true, target: 0.75 });
+    const gdb = Builder.FAMILY_DB[gm.baseFamily];
+    checks.push(["god menu: exactly one BASE first, refinements ∈ admits(base), finisher last",
+      gm.functions[0].role === "base" && gm.functions.filter(x => x.role === "base").length === 1
+      && gm.functions.slice(1).every(x => gdb.admits.includes(x.family))
+      && (gm.functions.findIndex(x => x.role === "finisher") === -1 || gm.functions.findIndex(x => x.role === "finisher") === gm.functions.length - 1)]);
+    checks.push(["god menu: every function has a paired difficulty + composed budget covers all",
+      gm.functions.every(x => typeof x.difficulty === "number") && Array.isArray(gm.budget) && gm.budget.length === gm.functions.length && gm.target === 0.75]);
+    const gPrompt = menuToPrompt(gm);
+    checks.push(["role-aware menu prompt (CORE MECHANIC / REFINEMENT / difficulty target)",
+      /CORE MECHANIC/.test(gPrompt) && (gm.functions.length < 2 || /REFINEMENT/.test(gPrompt)) && /Difficulty target/.test(gPrompt)]);
     // small-model prompt-kit (PAN-121): full prompt = guardrails + menu-scoped grammar + menu + exemplar
     const pkPrompt = buildPrompt(reg, proposeMenu(E.makeRng(5), reg, { k: 2 }), { templatesDir: path.join(__dirname, "scenes", "library") });
     checks.push(["prompt-kit assembles guardrails + grammar slice + menu + exemplar", /Reserved words/.test(pkPrompt) && /GRAMMAR \(only/.test(pkPrompt) && /YOUR TASK:/.test(pkPrompt) && /VALID EXAMPLE SCENE/.test(pkPrompt) && /^\s+grid\b/m.test(pkPrompt) && pkPrompt.includes("cut")]);
