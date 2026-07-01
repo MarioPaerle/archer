@@ -290,6 +290,26 @@ function nodeDepth(node) {
   if (node.op === "mask" || node.op === "repeat") return 1 + nodeDepth(node.node);
   return 1;
 }
+// INTRINSIC difficulty (Mario: reward the DEPTH of one rule, NOT the count of parallel rules). Measures the
+// longest data-dependency chain (a step CONSUMING a value an earlier step's execution produced over the same
+// grid) + symbol-grounding + contextuality. Rule-count terms (nObjects, dispatch-branches) are DELETED.
+function intrinsicMetrics(node) {
+  const steps = node.op === "seq" ? node.steps : [node];
+  const produced = {}; let dchain = 1, S = 0, contextual = 0, chainLen = 0;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i]; let produces = false, consumes = false;
+    if (s.op === "bind" || s.op === "derive") { produced[s.name] = i; produces = true; if (s.op === "derive") S++; }
+    if (s.op === "apply" && s.transform && s.transform.ref != null) { consumes = produced[s.transform.ref] != null; }
+    if (s.op === "apply_map") { consumes = true; S++; }
+    if (s.op === "erase_legend") consumes = true;
+    if (s.op === "dispatch") contextual++;
+    if (produces || consumes) chainLen++; else chainLen = 0;
+    if (chainLen > dchain) dchain = chainLen;
+  }
+  const score = +(1 - Math.exp(-(0.9 * (dchain - 1) + 0.7 * S + 0.4 * contextual) / 3)).toFixed(2);
+  // clamp: a flat rule with no dependency chain is EASY no matter how many parallel branches it has
+  return { Dchain: dchain, S, contextual, score: dchain === 1 ? Math.min(score, 0.35) : score };
+}
 function dispatchBranches(node) {
   if (node.op === "dispatch") return Object.keys(node.cases || {}).length + 1;
   if (node.op === "seq") return node.steps.reduce((a, n) => a + dispatchBranches(n), 0);
@@ -398,7 +418,8 @@ function buildProgramTask(prog, opts = {}) {
   const width = t.in[0][0].length, height = t.in[0].length;
   const tree = serializeNode(prog.node);
   const depth = nodeDepth(prog.node), branches = dispatchBranches(prog.node), nobj = first.inScene.objects.length;
-  const difficulty = +Math.min(1, 0.4 + 0.07 * depth + 0.05 * branches + 0.02 * nobj).toFixed(2);
+  const intrinsic = intrinsicMetrics(prog.node);        // Dchain-based INTRINSIC difficulty (rule-depth, not rule-count)
+  const difficulty = intrinsic.score;
   const nl = nlNode(prog.node), dtext = dslText(prog.node);
   // the KEYSTONE: the step-by-step "thinking-grids" execution trace on the test pair (each step engine-verified)
   const tr = runWithTrace(prog.node, t.inScene);
@@ -413,6 +434,7 @@ function buildProgramTask(prog, opts = {}) {
       difficulty, depth, template: "prog2:" + prog.name, source: "program.js", n_examples: nEx,
       program: {                                    // program.json (inline): the typed AST + labels + targets
         name: prog.name, tree, dsl_text: dtext, nl,          // the rule THREE aligned ways: AST + DSL-text + NL
+        intrinsic,                                           // {Dchain, S, contextual, score} — rule-DEPTH difficulty
         dispatch_branches: branches, depth,
         relations: sceneRelations(t.inScene), objects: objectMeta(t.inScene),
         targets: ["arc_pair", "next_frame", "inverse_dynamics", "object_aux", "relation_aux", "solve_trace"],
