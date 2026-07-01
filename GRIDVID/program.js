@@ -201,6 +201,23 @@ function applyNode(node, scene, env = {}) {
       for (const o of s.objects) if (o.id in C) o.color = C[o.id];
       return s;
     }
+    // INTRINSIC COMPLEXITY (grid-partition + projection, P2): DERIVE horizontal BANDS from full-width separator
+    // lines, read each band's KEY colour (its left-edge swatch), then a later step CONSUMES that per-band map to
+    // recolour every object by the band it sits in. You must BOTH partition the grid AND ground the per-band symbol
+    // — both read off the grid (they vary per example) ⇒ a genuinely deep single rule.
+    case "derive_bands": {
+      const seps = s.objects.filter(o => o.kind === "sep").map(o => o.r).sort((a, b) => a - b);
+      const bounds = [-1, ...seps, s.H];                                   // band i = rows strictly between two boundaries
+      const bandOf = r => { for (let i = 0; i < bounds.length - 1; i++) if (r > bounds[i] && r < bounds[i + 1]) return i; return -1; };
+      const keyColor = {}; for (const o of s.objects) if (o.kind === "key") keyColor[bandOf(Math.round(centerOf(o)[0]))] = o.color;
+      const B = {}; for (const o of s.objects) { if (o.kind === "sep" || o.kind === "key") continue; const b = bandOf(Math.round(centerOf(o)[0])); if (b in keyColor) B[o.id] = keyColor[b]; }
+      env[node.name] = { band: B }; return s;
+    }
+    case "apply_bands": {                              // each object takes the KEY colour of its band (separators/keys unchanged)
+      const B = (env[node.map] || {}).band || {};
+      for (const o of s.objects) if (o.id in B) o.color = B[o.id];
+      return s;
+    }
     case "apply": {                               // apply ONE transform to a selected subset
       const pred = selPred(node.sel);
       for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s, env);
@@ -311,9 +328,9 @@ function intrinsicMetrics(node) {
   const produced = {}; let dchain = 1, S = 0, contextual = 0, chainLen = 0;
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]; let produces = false, consumes = false;
-    if (s.op === "bind" || s.op === "derive" || s.op === "derive_containment") { produced[s.name] = i; produces = true; if (s.op !== "bind") S++; }
+    if (s.op === "bind" || s.op === "derive" || s.op === "derive_containment" || s.op === "derive_bands") { produced[s.name] = i; produces = true; if (s.op !== "bind") S++; }
     if (s.op === "apply" && s.transform && s.transform.ref != null) { consumes = produced[s.transform.ref] != null; }
-    if (s.op === "apply_map" || s.op === "apply_container") { consumes = true; S++; }
+    if (s.op === "apply_map" || s.op === "apply_container" || s.op === "apply_bands") { consumes = true; S++; }
     if (s.op === "erase_legend") consumes = true;
     if (s.op === "dispatch") contextual++;
     if (produces || consumes) chainLen++; else chainLen = 0;
@@ -375,6 +392,8 @@ function nlNode(node) {
     case "erase_legend": return "erase the legend";
     case "derive_containment": return "work out which frame ENCLOSES each object (inside vs outside)";
     case "apply_container": return "recolour every enclosed object to the colour of the frame around it";
+    case "derive_bands": return "split the grid into horizontal bands at the separator lines, and read each band's key colour from its left edge";
+    case "apply_bands": return "recolour every object to the key colour of the band it lies in";
     case "apply": return nlSel(node.sel) + " " + nlTransform(node.transform);
     case "dispatch": { const k = node.key && node.key.k || "property"; const cs = Object.entries(node.cases || {}).map(([v, t]) => (_CN[v] || v) + " → " + nlTransform(t)); return "each object, by its " + k + ": " + cs.join("; "); }
     case "mask": return "within the " + (node.region && node.region.side || node.region && node.region.q || "region") + ", " + nlNode(node.node);
@@ -395,6 +414,8 @@ function dslText(node) {
     case "erase_legend": return "erase_legend";
     case "derive_containment": return "derive(" + node.name + "=containment)";
     case "apply_container": return "apply_container(" + node.map + ")";
+    case "derive_bands": return "derive(" + node.name + "=bands)";
+    case "apply_bands": return "apply_bands(" + node.map + ")";
     case "apply": return "apply(" + (node.sel ? (node.sel.s + (node.sel.color != null ? ":" + node.sel.color : node.sel.cls ? ":" + node.sel.cls : "")) : "all") + ", " + (node.transform ? node.transform.t + (node.transform.color != null ? ":" + node.transform.color : node.transform.dir ? ":" + node.transform.dir : node.transform.ref ? ":" + node.transform.ref : "") : "identity") + ")";
     case "dispatch": return "dispatch(" + (node.key && node.key.k) + "){" + Object.entries(node.cases || {}).map(([v, t]) => v + ":" + t.t + (t.dir ? ":" + t.dir : t.color != null ? ":" + t.color : "")).join(",") + "}";
     case "mask": return "mask(" + a(node.region) + ", " + dslText(node.node) + ")";
@@ -421,6 +442,7 @@ function focusOf(step, scene) {
       if (a) add(a);
     } else if (step.op === "derive") { for (const o of scene.objects) if (centerOf(o)[1] <= 1.5) add(o); }
     else if (step.op === "derive_containment") { for (const o of scene.objects) if (HOLED.has(o.kind)) add(o); }
+    else if (step.op === "derive_bands") { for (const o of scene.objects) if (o.kind === "sep" || o.kind === "key") add(o); }
     else if (step.op === "apply" && step.sel && step.sel.s !== "all") { const pred = selPred(step.sel); for (const o of scene.objects) if (pred(o, scene)) add(o); }
   } catch (e) { }
   return out;
@@ -754,6 +776,54 @@ function generateLegend(opts = {}) {
   }
   return { records: out, emitted: out.length };
 }
+// P2 grid-partition / PROJECTION: full-width separator lines cut the grid into horizontal bands; each band's left
+// edge carries a KEY swatch; every (neutral) object is recoloured to its band's key colour. Partition + per-band
+// symbol-grounding = a genuinely deep single rule (the top unaddressed real-eval expressivity gap: band-conditioned
+// projection, cf. eval task 05a7bcf2).
+function sampleBandScene(rng) {
+  const W = rng.int(12, 16), nBands = rng.int(2, 3), bandH = rng.int(3, 4);
+  const H = nBands * bandH + (nBands - 1);                                 // bands separated by 1-row full-width lines
+  const objects = [], occ = new Set();
+  const pal = FULL_PALETTE.slice().sort(() => rng.int(0, 1) - 0.5);
+  const keyCols = pal.slice(0, nBands), sepCol = pal[nBands] != null ? pal[nBands] : 5, neutral = 5;
+  const bandRows = []; let r = 0, id = 0;
+  for (let b = 0; b < nBands; b++) {
+    bandRows.push([r, r + bandH]); r += bandH;
+    if (b < nBands - 1) { const cells = []; for (let c = 0; c < W; c++) { cells.push([0, c]); occ.add(r + "," + c); } objects.push({ id: "S" + (id++), cells, r, c: 0, color: sepCol, kind: "sep" }); r += 1; }
+  }
+  for (let b = 0; b < nBands; b++) { const [r0, r1] = bandRows[b], kr = r0 + Math.floor((r1 - r0) / 2); objects.push({ id: "K" + (id++), cells: [[0, 0]], r: kr, c: 0, color: keyCols[b], kind: "key" }); occ.add(kr + ",0"); }
+  const shapes = [[[0, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0]], [[0, 0], [0, 1], [1, 0]]];
+  const nWork = rng.int(4, 6);
+  for (let w = 0; w < nWork; w++) {
+    const b = rng.int(0, nBands - 1), [r0, r1] = bandRows[b], shp = shapes[rng.int(0, shapes.length - 1)];
+    for (let t = 0; t < 60; t++) {
+      const rr = rng.int(r0, r1 - 1), cc = rng.int(2, W - 2); let clash = false;
+      for (const [dr, dc] of shp) { const nr = rr + dr, nc = cc + dc; if (nr < r0 || nr >= r1 || nc >= W) { clash = true; break; } for (let a = -1; a <= 1 && !clash; a++) for (let d = -1; d <= 1 && !clash; d++) if (occ.has((nr + a) + "," + (nc + d))) clash = true; }
+      if (clash) continue;
+      for (const [dr, dc] of shp) occ.add((rr + dr) + "," + (cc + dc));
+      objects.push({ id: "w" + (id++), cells: shp.map(x => x.slice()), r: rr, c: cc, color: neutral, kind: "work" }); break;
+    }
+  }
+  return { H, W, bg: 0, objects };
+}
+const BAND_PROG = {
+  name: "band_projection", prior: "grid-partition/projection",
+  rule: "Full-width separator lines split the grid into horizontal bands. Each band carries a KEY swatch on its left edge. Recolour every (grey) object to the key colour of the band it sits in; separators and keys stay unchanged. (You must BOTH partition the grid by the separators AND read each band's key — both off the grid, and they vary every example.)",
+  concepts: ["grid-partition", "band", "projection", "symbol-grounding", "derive-then-consume", "dependency"],
+  node: { op: "seq", steps: [{ op: "derive_bands", name: "B" }, { op: "apply_bands", map: "B" }] },
+  sampler: sampleBandScene,
+};
+function generateBands(opts = {}) {
+  const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 151);
+  const out = []; let guard = 0;
+  while (out.length < n && guard++ < n * 25) {
+    let task; try { task = buildProgramTask(BAND_PROG, { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    if (!task.meta.teaching.coherent) continue;
+    if (!task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out))) continue;
+    out.push(task);
+  }
+  return { records: out, emitted: out.length };
+}
 
 // ============================================================ self-test
 function selfTest() {
@@ -780,6 +850,21 @@ function selfTest() {
   // determinism
   const a = buildDemo("dispatch_by_core", { seed: 4 }).meta.id, b = buildDemo("dispatch_by_core", { seed: 4 }).meta.id;
   if (a !== b) throw new Error("program.js: non-deterministic build");
+  // P2 band-projection: every work object takes its band's KEY colour; separators & keys stay unchanged
+  {
+    const sIn = sampleBandScene(E.makeRng(7)), sOut = applyNode(BAND_PROG.node, sIn, {});
+    const bId = Object.fromEntries(sOut.objects.map(o => [o.id, o]));
+    const seps = sIn.objects.filter(o => o.kind === "sep").map(o => o.r).sort((x, y) => x - y), bounds = [-1, ...seps, sIn.H];
+    const bandOf = rr => { for (let i = 0; i < bounds.length - 1; i++) if (rr > bounds[i] && rr < bounds[i + 1]) return i; return -1; };
+    const key = {}; for (const o of sIn.objects) if (o.kind === "key") key[bandOf(Math.round(centerOf(o)[0]))] = o.color;
+    let checked = 0;
+    for (const o of sIn.objects) { const after = bId[o.id]; if (!after) continue;
+      if ((o.kind === "sep" || o.kind === "key") && after.color !== o.color) throw new Error("band: a separator/key was recoloured");
+      if (o.kind === "work") { if (after.color !== key[bandOf(Math.round(centerOf(o)[0]))]) throw new Error("band: work not recoloured to its band key"); checked++; }
+    }
+    if (checked < 1) throw new Error("band: no work object recoloured");
+    if (intrinsicMetrics(BAND_PROG.node).Dchain < 2) throw new Error("band: Dchain should be >=2 (derive→consume)");
+  }
   // gravity_on_red and mask_left_mirror should survive the baseline-hard filter (non-trivial)
   for (const name of ["gravity_on_red", "mask_left_mirror", "dispatch_by_core"]) {
     if (B.trivialSolve(buildDemo(name, { seed: 6 }))) throw new Error(name + ": trivially solvable (too easy)");
@@ -808,6 +893,11 @@ if (require.main === module) {
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} containment tasks → ${o}`); }
     else { for (const t of r.records) console.error("# " + t.meta.program.nl); console.error(`\n${r.emitted} containment tasks`); }
   }
+  else if (args.includes("--bands")) {   // P2 grid-partition/projection derive-then-consume DEEP rule (band → key colour)
+    const n = +flag("--bands", 12), o = flag("-o", null), r = generateBands({ n, seed: +flag("--seed", 1) });
+    if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} band-projection tasks → ${o}`); }
+    else { for (const t of r.records) console.error("# " + t.meta.program.nl); console.error(`\n${r.emitted} band-projection tasks`); }
+  }
   else if (args.includes("--list")) { for (const [k, v] of Object.entries(LIBRARY)) console.log(k.padEnd(30), "—", v.rule); }
   else if (args.includes("--demo")) {
     const name = flag("--demo", "gravity_on_red"), task = buildDemo(name, { seed: +flag("--seed", 1) });
@@ -822,6 +912,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
-  sampleChain, generateComposed, generateLegend, generateContainment,
+  sampleChain, generateComposed, generateLegend, generateContainment, generateBands,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };
