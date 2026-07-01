@@ -188,6 +188,19 @@ function applyNode(node, scene, env = {}) {
     case "erase_legend": {                            // drop the legend region (col 0..1) — the "instructions" are consumed
       s.objects = s.objects.filter(o => centerOf(o)[1] > 1.5); return s;
     }
+    // INTRINSIC COMPLEXITY (topology): DERIVE the containment relation (which frame encloses each object), then a
+    // later step CONSUMES it. You must compute inside/outside off the grid — a genuinely deep single rule.
+    case "derive_containment": {
+      const frames = s.objects.filter(o => HOLED.has(o.kind)), C = {};
+      for (const o of s.objects) { if (HOLED.has(o.kind)) continue; const [cr, cc] = centerOf(o);
+        for (const F of frames) { const [fh, fw] = bbox(F.cells); if (cr > F.r && cr < F.r + fh - 1 && cc > F.c && cc < F.c + fw - 1) { C[o.id] = F.color; break; } } }
+      env[node.name] = { contain: C }; return s;
+    }
+    case "apply_container": {                          // each ENCLOSED object takes its frame's colour (outside objects unchanged)
+      const C = (env[node.map] || {}).contain || {};
+      for (const o of s.objects) if (o.id in C) o.color = C[o.id];
+      return s;
+    }
     case "apply": {                               // apply ONE transform to a selected subset
       const pred = selPred(node.sel);
       for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s, env);
@@ -298,9 +311,9 @@ function intrinsicMetrics(node) {
   const produced = {}; let dchain = 1, S = 0, contextual = 0, chainLen = 0;
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]; let produces = false, consumes = false;
-    if (s.op === "bind" || s.op === "derive") { produced[s.name] = i; produces = true; if (s.op === "derive") S++; }
+    if (s.op === "bind" || s.op === "derive" || s.op === "derive_containment") { produced[s.name] = i; produces = true; if (s.op !== "bind") S++; }
     if (s.op === "apply" && s.transform && s.transform.ref != null) { consumes = produced[s.transform.ref] != null; }
-    if (s.op === "apply_map") { consumes = true; S++; }
+    if (s.op === "apply_map" || s.op === "apply_container") { consumes = true; S++; }
     if (s.op === "erase_legend") consumes = true;
     if (s.op === "dispatch") contextual++;
     if (produces || consumes) chainLen++; else chainLen = 0;
@@ -360,6 +373,8 @@ function nlNode(node) {
     case "derive": return "read the legend in the left margin (a colour map: each src swatch → its target)";
     case "apply_map": return "recolour every object according to that legend";
     case "erase_legend": return "erase the legend";
+    case "derive_containment": return "work out which frame ENCLOSES each object (inside vs outside)";
+    case "apply_container": return "recolour every enclosed object to the colour of the frame around it";
     case "apply": return nlSel(node.sel) + " " + nlTransform(node.transform);
     case "dispatch": { const k = node.key && node.key.k || "property"; const cs = Object.entries(node.cases || {}).map(([v, t]) => (_CN[v] || v) + " → " + nlTransform(t)); return "each object, by its " + k + ": " + cs.join("; "); }
     case "mask": return "within the " + (node.region && node.region.side || node.region && node.region.q || "region") + ", " + nlNode(node.node);
@@ -378,6 +393,8 @@ function dslText(node) {
     case "derive": return "derive(" + node.name + "=legend)";
     case "apply_map": return "apply_map(" + node.map + ")";
     case "erase_legend": return "erase_legend";
+    case "derive_containment": return "derive(" + node.name + "=containment)";
+    case "apply_container": return "apply_container(" + node.map + ")";
     case "apply": return "apply(" + (node.sel ? (node.sel.s + (node.sel.color != null ? ":" + node.sel.color : node.sel.cls ? ":" + node.sel.cls : "")) : "all") + ", " + (node.transform ? node.transform.t + (node.transform.color != null ? ":" + node.transform.color : node.transform.dir ? ":" + node.transform.dir : node.transform.ref ? ":" + node.transform.ref : "") : "identity") + ")";
     case "dispatch": return "dispatch(" + (node.key && node.key.k) + "){" + Object.entries(node.cases || {}).map(([v, t]) => v + ":" + t.t + (t.dir ? ":" + t.dir : t.color != null ? ":" + t.color : "")).join(",") + "}";
     case "mask": return "mask(" + a(node.region) + ", " + dslText(node.node) + ")";
@@ -653,6 +670,52 @@ const LEGEND_PROG = {
   node: { op: "seq", steps: [{ op: "derive", name: "M" }, { op: "apply_map", map: "M" }, { op: "erase_legend" }] },
   sampler: sampleLegendScene,
 };
+// P4/topology — CONTAINMENT: frames enclose objects; the derived inside/outside relation drives the recolour.
+function sampleContainmentScene(rng) {
+  const H = rng.int(12, 16), W = rng.int(12, 16), objects = [], occ = new Set();
+  const pal = FULL_PALETTE.slice().sort(() => rng.int(0, 1) - 0.5);
+  const nFrames = rng.int(2, 3); let id = 0;
+  const frameCells = s => { const o = []; for (let r = 0; r < s; r++) for (let c = 0; c < s; c++) if (r === 0 || c === 0 || r === s - 1 || c === s - 1) o.push([r, c]); return o; };
+  for (let f = 0; f < nFrames; f++) {
+    const s = rng.int(5, 6); let placed = null;
+    for (let t = 0; t < 140 && !placed; t++) {
+      const r0 = rng.int(0, H - s), c0 = rng.int(0, W - s), fc = frameCells(s);
+      if (fc.some(([dr, dc]) => occ.has((r0 + dr - 1) + "," + (c0 + dc)) || occ.has((r0 + dr) + "," + (c0 + dc)))) continue;
+      for (const [dr, dc] of fc) occ.add((r0 + dr) + "," + (c0 + dc));
+      objects.push({ id: "F" + (id++), cells: fc, r: r0, c: c0, color: pal[f], kind: "frame" });
+      if (rng.int(0, 4) > 0) {   // most frames enclose a 2x2 block at their centre (a visible amount of change)
+        const col = pal[3 + rng.int(0, 3)], inCells = [[0, 0], [0, 1], [1, 0], [1, 1]];
+        objects.push({ id: "I" + (id++), cells: inCells, r: r0 + 1, c: c0 + 1, color: col, kind: "inside" });
+        for (const [dr, dc] of inCells) occ.add((r0 + 1 + dr) + "," + (c0 + 1 + dc));
+      }
+      placed = true;
+    }
+  }
+  for (let w = 0; w < rng.int(2, 4); w++) {   // some OUTSIDE objects (a distractor set that must stay unchanged)
+    for (let t = 0; t < 60; t++) { const r0 = rng.int(0, H - 1), c0 = rng.int(0, W - 1);
+      let clash = false; for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1 && !clash; b++) if (occ.has((r0 + a) + "," + (c0 + b))) clash = true;
+      if (clash) continue; occ.add(r0 + "," + c0); objects.push({ id: "O" + (id++), cells: [[0, 0]], r: r0, c: c0, color: pal[3 + rng.int(0, 3)], kind: "outside" }); break; }
+  }
+  return { H, W, bg: 0, objects };
+}
+const CONTAIN_PROG = {
+  name: "containment_recolor", prior: "topology/containment",
+  rule: "Every object ENCLOSED by a frame takes that frame's colour; objects outside every frame are unchanged. (You must work out inside vs outside — a topological relation read off the grid.)",
+  concepts: ["topology", "containment", "inside-outside", "derive-then-consume", "dependency"],
+  node: { op: "seq", steps: [{ op: "derive_containment", name: "C" }, { op: "apply_container", map: "C" }] },
+  sampler: sampleContainmentScene,
+};
+function generateContainment(opts = {}) {
+  const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 173);
+  const out = []; let guard = 0;
+  while (out.length < n && guard++ < n * 25) {
+    let task; try { task = buildProgramTask(CONTAIN_PROG, { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    if (!task.meta.teaching.coherent) continue;
+    if (!task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out))) continue;
+    out.push(task);
+  }
+  return { records: out, emitted: out.length };
+}
 function generateLegend(opts = {}) {
   const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 131);
   const out = []; let guard = 0;
@@ -713,6 +776,11 @@ if (require.main === module) {
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} legend tasks → ${o}`); }
     else { for (const t of r.records) console.error("# " + (t.meta.program.nl)); console.error(`\n${r.emitted} legend tasks`); }
   }
+  else if (args.includes("--contain")) {   // P4/topology derive-then-consume DEEP rule (inside/outside)
+    const n = +flag("--contain", 12), o = flag("-o", null), r = generateContainment({ n, seed: +flag("--seed", 1) });
+    if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} containment tasks → ${o}`); }
+    else { for (const t of r.records) console.error("# " + t.meta.program.nl); console.error(`\n${r.emitted} containment tasks`); }
+  }
   else if (args.includes("--list")) { for (const [k, v] of Object.entries(LIBRARY)) console.log(k.padEnd(30), "—", v.rule); }
   else if (args.includes("--demo")) {
     const name = flag("--demo", "gravity_on_red"), task = buildDemo(name, { seed: +flag("--seed", 1) });
@@ -727,6 +795,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
-  sampleChain, generateComposed, generateLegend,
+  sampleChain, generateComposed, generateLegend, generateContainment,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };
