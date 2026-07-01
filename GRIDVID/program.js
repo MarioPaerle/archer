@@ -404,17 +404,39 @@ function dslText(node) {
     default: return node.op;
   }
 }
+// focusOf — the cells a SELECTION/DERIVE step is "looking at", to be HIGHLIGHTED IN WHITE in the trace, the way a
+// human points at the objects they're reasoning about (bind = the anchor; derive = the legend; derive_containment
+// = the frames; apply = the selected subset). Computed on the scene the step reads (its grid is unchanged).
+function focusOf(step, scene) {
+  const out = [], add = o => { for (const [dr, dc] of o.cells) { const r = o.r + dr, c = o.c + dc; if (r >= 0 && c >= 0 && r < scene.H && c < scene.W) out.push([r, c]); } };
+  try {
+    if (step.op === "bind") {
+      const objs = scene.objects.filter(o => !o._removed), sig = o => o.cells.map(([r, c]) => r + "," + c).sort().join(";");
+      let a = null, uni = (arr, keyf) => { const c = {}; arr.forEach(x => c[keyf(x)] = (c[keyf(x)] || 0) + 1); const u = arr.filter(x => c[keyf(x)] === 1); return u.length === 1 ? u[0] : null; };
+      if (step.pick === "largest") { const m = Math.max(...objs.map(area)), k = objs.filter(x => area(x) === m); a = k.length === 1 ? k[0] : null; }
+      else if (step.pick === "smallest") { const m = Math.min(...objs.map(area)), k = objs.filter(x => area(x) === m); a = k.length === 1 ? k[0] : null; }
+      else if (step.pick === "holed") { const k = objs.filter(x => HOLED.has(x.kind)); a = k.length === 1 ? k[0] : null; }
+      else if (step.pick === "unique_color") a = uni(objs, x => x.color);
+      else if (step.pick === "unique_shape") a = uni(objs, sig);
+      if (a) add(a);
+    } else if (step.op === "derive") { for (const o of scene.objects) if (centerOf(o)[1] <= 1.5) add(o); }
+    else if (step.op === "derive_containment") { for (const o of scene.objects) if (HOLED.has(o.kind)) add(o); }
+    else if (step.op === "apply" && step.sel && step.sel.s !== "all") { const pred = selPred(step.sel); for (const o of scene.objects) if (pred(o, scene)) add(o); }
+  } catch (e) { }
+  return out;
+}
 // runWithTrace — the KEYSTONE: execute a program while capturing the intermediate scene after each TOP-LEVEL
 // step. For a `seq` this is the human "thinking-grids" trace, for free (the engine already computes each `acc`).
+// Each step also carries `focus` (cells the selection/derive step is looking at → white-highlighted in the trace).
 function runWithTrace(node, scene, env = {}) {
   const steps = [];
   if (node.op === "seq") {
     let acc = cloneScene(scene);
-    for (const step of node.steps) { acc = applyNode(step, acc, env); steps.push({ op: step.op, nl: nlNode(step), dsl: dslText(step), scene: acc }); }
+    for (const step of node.steps) { const focus = focusOf(step, acc); acc = applyNode(step, acc, env); steps.push({ op: step.op, nl: nlNode(step), dsl: dslText(step), scene: acc, focus }); }
     return { scene: acc, steps };
   }
-  const out = applyNode(node, scene, env);
-  steps.push({ op: node.op, nl: nlNode(node), dsl: dslText(node), scene: out });
+  const focus = focusOf(node, scene), out = applyNode(node, scene, env);
+  steps.push({ op: node.op, nl: nlNode(node), dsl: dslText(node), scene: out, focus });
   return { scene: out, steps };
 }
 
@@ -447,8 +469,8 @@ function buildProgramTask(prog, opts = {}) {
   const nl = nlNode(prog.node), dtext = dslText(prog.node);
   // the KEYSTONE: the step-by-step "thinking-grids" execution trace on the test pair (each step engine-verified)
   const tr = runWithTrace(prog.node, t.inScene);
-  const trace = [{ step: 0, op: "input", nl: "the input scene", grid: t.in[0] }]
-    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: renderScene(s.scene) })));
+  const trace = [{ step: 0, op: "input", nl: "the input scene", grid: t.in[0], focus: [] }]
+    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: renderScene(s.scene), focus: s.focus || [] })));
   const id = "PRG-" + crypto.createHash("sha1").update(JSON.stringify([prog.name, examples, t.in, t.out])).digest("hex").slice(0, 8);
   return {
     format: "prodigy-task", version: 1, width, height, palette: "arc10", fps: 1,
