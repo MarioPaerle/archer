@@ -334,11 +334,16 @@ function buildPrompt(registry, menu, opts = {}) {
   // way to know which predicates exist or that `it`/`where` are usable → it could only copy the exemplar. Wire them in.
   const usesPred = verbs.has("dispatch") || verbs.has("classify") || /\b(where|odd)\b/.test(rawAll);
   if (usesPred) { verbs.add("where"); if (verbs.has("dispatch")) verbs.add("it"); if (/\bodd\b/.test(rawAll)) verbs.add("odd"); }
+  if (opts.drawGlyphs) verbs.add("glyph");   // model-drawn-shapes push: expose the `glyph` grammar to the model
   const exemplar = registry.find(r => r.name === menu.functions[0].name);
   const exText = exemplar ? fs.readFileSync(path.join(templatesDir, exemplar.file), "utf8").trim() : "";
+  // when the draw-push is active, flip the "no invented shapes" guardrail into a "DRAW your own shapes" instruction
+  const guards = opts.drawGlyphs
+    ? GUARDRAILS.map(g => g.startsWith("- Use ONLY shape names") ? "- DRAW YOUR OWN SHAPES: define 1–3 custom shapes with 'glyph NAME rows' (rows joined by /, digits 0..9, 0=empty, e.g. glyph house 010/111/111) — invent shapes NOT in the SHAPES list (a house, arrow, letter, animal, abstract motif) — then 'spawn NAME'. Built-in SHAPES are also allowed." : g)
+    : GUARDRAILS;
   const out = [
     "You write GRIDVID scene-DSL that generates ONE ARC-style task. Output ONLY the scene text, no prose.",
-    "", "RULES:", ...GUARDRAILS,
+    "", "RULES:", ...guards,
     "", "GRAMMAR (only the parts you need):", ...grammarSlice(verbs),
   ];
   if (usesPred) out.push("", "PREDICATES (the PRED values for dispatch / classify / where): " + Object.keys(E.PREDICATES).join(" · ")
@@ -714,7 +719,8 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     while (accepted.length < n && stats.attempts < cap) {
       stats.attempts++;
       const menu = proposeMenu(rng, registry, { k, static: useStatic });
-      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: useStatic });
+      const drawGlyphs = rng() < (f.glyphFrac != null ? +f.glyphFrac : 0.25);   // sometimes PUSH the model to draw its own shapes
+      const prompt = buildPrompt(registry, menu, { templatesDir, novelty: true, static: useStatic, drawGlyphs });
       let callModel;
       if (f.stub) { const ex = registry.find(r => r.name === menu.functions[0].name), exText = fs.readFileSync(path.join(templatesDir, ex.file), "utf8").trim(), sd = seedBase + (i++); callModel = async () => "seed " + sd + "\n" + exText; }
       else callModel = (p) => callModelHTTP(p, { endpoint: f.endpoint, model: f.model, max_tokens: f.maxtok ? +f.maxtok : undefined, temperature: f.temp != null ? +f.temp : undefined });   // --maxtok (thinking models need many) / --temp

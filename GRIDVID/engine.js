@@ -68,6 +68,15 @@
     // into a notch (a slot cut into the top). Same s ⇒ they interlock exactly.
     notch: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) for (let j = 0; j < s; j++) if (!(j === m && i < 2)) o.push([i, j]); return normalize(o); },
     bump: (s = 5) => { const m = (s - 1) >> 1, o = rectCells(s, s); o.push([s, m]); o.push([s + 1, m]); return normalize(o); },
+    Ushape: (s = 5) => { const o = []; for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } for (let j = 0; j < s; j++) o.push([s - 1, j]); return normalize(dedupe(o)); },
+    Cshape: (s = 5) => { const o = []; for (let j = 0; j < s; j++) { o.push([0, j]); o.push([s - 1, j]); } for (let i = 0; i < s; i++) o.push([i, 0]); return normalize(dedupe(o)); },
+    Hshape: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } for (let j = 0; j < s; j++) o.push([m, j]); return normalize(dedupe(o)); },
+    Zshape: (s = 5) => { const o = []; for (let j = 0; j < s; j++) { o.push([0, j]); o.push([s - 1, j]); } for (let i = 1; i < s - 1; i++) o.push([i, s - 1 - i]); return normalize(dedupe(o)); },
+    stair: (s = 5) => { const o = []; for (let i = 0; i < s; i++) { o.push([i, i]); if (i + 1 < s) o.push([i + 1, i]); } return normalize(dedupe(o)); },
+    arrow: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) o.push([i, m]); for (let k = 0; k <= m; k++) { o.push([k, m - k]); o.push([k, m + k]); } return normalize(dedupe(o)); },
+    key: (s = 5) => { const o = outline(rectCells(Math.max(3, s - 1), Math.max(3, s - 1))); const m = (s - 1) >> 1; for (let j = s - 1; j < s + 3; j++) o.push([m, j]); o.push([m - 1, s + 1]); o.push([m + 1, s + 2]); return normalize(dedupe(o)); },
+    fork: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 1; i < s; i++) o.push([i, m]); for (let j = 0; j < s; j += 2) { o.push([0, j]); o.push([1, j]); } return normalize(dedupe(o)); },
+    bridge: (s = 5) => { const o = []; for (let j = 0; j < s; j++) o.push([0, j]); for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } return normalize(dedupe(o)); },
   };
 
   function outline(cells) {
@@ -94,6 +103,25 @@
   function shapeSig(cells) { return normalize(cells).map(([r, c]) => r + ":" + c).join("|"); }
   function bbox(cells) { let h = 0, w = 0; for (const [r, c] of cells) { if (r + 1 > h) h = r + 1; if (c + 1 > w) w = c + 1; } return [h, w]; }
   function buildShape(name, args) { const fn = SHAPES[name]; if (!fn) throw new Error("unknown shape: " + name); return normalize(fn.apply(null, args)); }
+  // MODEL-DRAWN SHAPES: `glyph NAME rows` (rows joined by '/', each char an ARC digit 0..9; 0 = empty). Lets a
+  // NON-agentic LLM (Qwen) DRAW its own shapes pixel-by-pixel. Mono (all '1') = tinted by the spawn colour;
+  // multi-digit = coloured per-cell. Validated (bbox<=8, connected, non-empty) so object segmentation stays clean.
+  function registerGlyph(name, pat) {
+    if (!name || !pat) throw new Error("glyph: use 'glyph NAME rows' (rows joined by /, digits 0..9, 0=empty)");
+    const rows = String(pat).split("/").filter(s => s.length);
+    if (!rows.length) throw new Error("glyph " + name + ": empty pattern");
+    const w = rows[0].length; if (w > 8 || rows.length > 8) throw new Error("glyph " + name + ": max 8x8");
+    const raw = [], colAt = {};
+    for (let r = 0; r < rows.length; r++) { if (rows[r].length !== w) throw new Error("glyph " + name + ": ragged rows"); for (let c = 0; c < w; c++) { const d = rows[r][c]; if (d < "0" || d > "9") throw new Error("glyph " + name + ": non-digit '" + d + "'"); const v = +d; if (v > 0) { raw.push([r, c]); colAt[r + "," + c] = v; } } }
+    if (!raw.length) throw new Error("glyph " + name + ": no filled cells");
+    if (!isConnected(raw)) throw new Error("glyph " + name + ": disconnected (must be one 4-connected blob)");
+    const cells = normalize(raw), [h0, w0] = bbox(raw);
+    let mr = 1e9, mc = 1e9; for (const [r, c] of raw) { if (r < mr) mr = r; if (c < mc) mc = c; }
+    const digits = new Set(raw.map(([r, c]) => colAt[r + "," + c]));
+    const colors = digits.size === 1 && digits.has(1) ? null : {};    // mono → tint by spawn colour; else per-cell
+    if (colors) for (const [r, c] of raw) colors[(r - mr) + "," + (c - mc)] = colAt[r + "," + c];
+    return { cells, colors, mono: !colors };
+  }
   // rotate a relative mask 90° clockwise.
   function rotateCells(cells) { const [h] = bbox(cells); return normalize(cells.map(([r, c]) => [c, h - 1 - r])); }
   // mirror a relative mask across its vertical / horizontal centre line.
@@ -189,6 +217,7 @@
   function makeBody(o) {
     return {
       id: o.id || ("b" + (_autoId++)), cells: normalize(o.cells),
+      colors: o.colors || null,   // per-cell colour map (model-drawn coloured glyphs); null = solid `color`
       r: o.r | 0, c: o.c | 0, color: o.color == null ? 1 : o.color,
       interior: o.interior == null ? null : o.interior,
       vr: o.vr | 0, vc: o.vc | 0, gravity: !!o.gravity,
@@ -208,7 +237,7 @@
     return {
       w: o.w || 16, h: o.h || 16, bg: o.bg == null ? 0 : o.bg,
       gravity: o.gravity || [0, 0], walls: o.walls || "box",
-      bodies: [], holes: [], board: null, fields: [], shooters: [], sources: [],
+      bodies: [], holes: [], glyphs: {}, board: null, fields: [], shooters: [], sources: [],
       liquid: null, liquidStreams: [], liquidCfg: { viscosity: 0, turbulence: 0, flow: 1 }, hiddenLayers: [],
       water: null, spills: [],   // new simple fluid (spillStep): continuous, laminar, fills & overflows containers
       counters: [], snakes: [], wells: [], conveyors: [], paths: [],
@@ -712,7 +741,8 @@
       .sort((a, b) => ((a[0].layer | 0) - (b[0].layer | 0)) || (a[1] - b[1]));
     for (const [b] of ordered) {
       const drawCell = (dr, dc, col) => { put(g, world, b.r + dr, b.c + dc, col); if (owners && inBounds(world, b.r + dr, b.c + dc)) owners[b.r + dr][b.c + dc] = b; };
-      if (b.fill === "outline") { for (const [dr, dc] of outline(b.cells)) drawCell(dr, dc, b.color); }
+      if (b.colors) { for (const [dr, dc] of b.cells) drawCell(dr, dc, b.colors[dr + "," + dc] || b.color); }   // model-drawn coloured glyph: per-cell colour
+      else if (b.fill === "outline") { for (const [dr, dc] of outline(b.cells)) drawCell(dr, dc, b.color); }
       else if (b.interior != null) { const I = new Set(interiorOf(b.cells).map(([r, c]) => r + "," + c)); for (const [dr, dc] of b.cells) drawCell(dr, dc, I.has(dr + "," + dc) ? b.interior : b.color); }
       else { for (const [dr, dc] of b.cells) drawCell(dr, dc, b.color); }
     }
@@ -1039,6 +1069,7 @@
         else if (cmd === "name") { world.meta.scene = toks.slice(1).join(" "); }
         else if (cmd === "seed") { world.seed = +toks[1]; world.rng = makeRng(+toks[1]); }
         else if (cmd === "walls") world.walls = toks[1] || "box";
+        else if (cmd === "glyph") { world.glyphs[toks[1]] = registerGlyph(toks[1], toks[2]); }   // model-drawn custom shape
         else if (cmd === "gravity") {
           if (isNaN(Number(toks[1]))) { const d = DIRS[toks[1]] || [1, 0], n = toks[2] ? +toks[2] : 1; world.gravity = [d[0] * n, d[1] * n]; }
           else world.gravity = [+toks[1], +toks[2] || 0];
@@ -1447,7 +1478,9 @@
         else if (cmd === "spawn" || cmd === "hole") {
           const sh = parseShape(toks, 1), kv = parseKV(toks, sh.i);
           const sargs = sh.args.map(a => (a && a.rand) ? world.rng.int(a.rand[0], a.rand[1]) : a);  // resolve 'rand LO HI' size args
-          const cells = buildShape(sh.name, sargs);
+          const gl = world.glyphs[sh.name];                       // model-drawn glyph? use its cells+colours, else a built-in shape
+          const cells = gl ? gl.cells : buildShape(sh.name, sargs);
+          const glyphColors = gl ? gl.colors : null;
           // 'color rand [LO HI]' resolves here (needs world.rng) → incidental colour varies per seed/example.
           const col = kv.colorRand ? world.rng.int(kv.colorRand[0], kv.colorRand[1]) : kv.color;
           if (cmd === "hole") world.holes.push({ id: kv.id || ("h" + world.holes.length), cells, r: kv.r | 0, c: kv.c | 0, color: col == null ? 5 : col, sig: shapeSig(cells) });
@@ -1465,7 +1498,7 @@
               for (let tries = 0; tries < 60 && !ok; tries++) { [rr, cc] = tryAt(); ok = clear(rr, cc, 0); }                  // fall back to merely non-overlapping
               kv.r = rr; kv.c = cc;   // best effort: last try if even that fails (rare in a roomy box)
             }
-            world.bodies.push(makeBody({ cells, r: kv.r, c: kv.c, color: col == null ? 1 : col, vr: kv.vr, vc: kv.vc, gravity: kv.grav, bounce: kv.bounce, fill: kv.fill, interior: kv.interior, spin: kv.spin, layer: kv.layer, ghost: kv.ghost, magnet: kv.magnet, link: kv.link, id: kv.id, target: kv.target, kind: sh.name, srcLine: ln }));
+            world.bodies.push(makeBody({ cells, colors: glyphColors, r: kv.r, c: kv.c, color: col == null ? 1 : col, vr: kv.vr, vc: kv.vc, gravity: kv.grav, bounce: kv.bounce, fill: kv.fill, interior: kv.interior, spin: kv.spin, layer: kv.layer, ghost: kv.ghost, magnet: kv.magnet, link: kv.link, id: kv.id, target: kv.target, kind: sh.name, srcLine: ln }));
           }
         }
         else if (cmd === "classify") {
@@ -1712,8 +1745,13 @@ coords are 'row col' (0,0 = top-left); +row=down, +col=right.
   walls box|floor|none           solid borders
   gravity DIR [N] | GR GC        gravity (down/up/left/right strength N)
   name TEXT                      label (export filename + meta)
+  glyph NAME rows                DRAW YOUR OWN SHAPE, pixel-by-pixel. rows joined by '/', each char a digit
+                                 0..9 (0 = empty). All '1' = a plain shape tinted by the spawn colour; using
+                                 several digits = a fixed multi-colour shape. Then 'spawn NAME …' like any shape.
+                                 Max 8x8, must be one connected blob. e.g.  glyph house 010/111/111  ·  glyph
+                                 heart 02020/22222/02220/00200 . Invent shapes NOT in the SHAPES list.
 
-  spawn SHAPE [a..] at R C [opts] movable object
+  spawn SHAPE [a..] at R C [opts] movable object   (SHAPE = a built-in name OR one of your own glyph names)
       opts: color C · vel DR DC · grav 0|1 · bounce 0..1 · spin K (rotate 90 every K)
       color rand [LO HI] (RANDOM colour per seed — vary features that are NOT the rule, to force generalization)
             fill solid|outline · interior C · layer N · ghost 0|1 (ignore collisions; useful for occlusion)
