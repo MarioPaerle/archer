@@ -108,11 +108,12 @@
   // multi-digit = coloured per-cell. Validated (bbox<=8, connected, non-empty) so object segmentation stays clean.
   function registerGlyph(name, pat) {
     if (!name || !pat) throw new Error("glyph: use 'glyph NAME rows' (rows joined by /, digits 0..9, 0=empty)");
-    const rows = String(pat).split("/").filter(s => s.length);
+    let rows = String(pat).split("/").filter(s => s.length);
     if (!rows.length) throw new Error("glyph " + name + ": empty pattern");
-    const w = rows[0].length; if (w > 8 || rows.length > 8) throw new Error("glyph " + name + ": max 8x8");
+    const w = Math.max(...rows.map(s => s.length)); rows = rows.map(s => s.padEnd(w, "0"));   // forgiving: pad ragged rows with empty cells
+    if (w > 8 || rows.length > 8) throw new Error("glyph " + name + ": max 8x8");
     const raw = [], colAt = {};
-    for (let r = 0; r < rows.length; r++) { if (rows[r].length !== w) throw new Error("glyph " + name + ": ragged rows"); for (let c = 0; c < w; c++) { const d = rows[r][c]; if (d < "0" || d > "9") throw new Error("glyph " + name + ": non-digit '" + d + "'"); const v = +d; if (v > 0) { raw.push([r, c]); colAt[r + "," + c] = v; } } }
+    for (let r = 0; r < rows.length; r++) { for (let c = 0; c < w; c++) { const d = rows[r][c]; if (d < "0" || d > "9") throw new Error("glyph " + name + ": non-digit '" + d + "'"); const v = +d; if (v > 0) { raw.push([r, c]); colAt[r + "," + c] = v; } } }
     if (!raw.length) throw new Error("glyph " + name + ": no filled cells");
     if (!isConnected(raw)) throw new Error("glyph " + name + ": disconnected (must be one 4-connected blob)");
     const cells = normalize(raw), [h0, w0] = bbox(raw);
