@@ -5,18 +5,15 @@
  *   node build_trace_showcase.js <corpus.jsonl> -o out/trace.html --title "..."
  */
 const fs = require("fs");
-const PAL = ["#000000", "#1E93FF", "#F93C31", "#4FCC30", "#FFDC00", "#999999", "#E53AA3", "#FF851B", "#87D8F1", "#921231"];
+const PAL = ["#000000", "#1E93FF", "#F93C31", "#4FCC30", "#FFDC00", "#999999", "#E53AA3", "#FF851B", "#87D8F1", "#921231", "#FFFFFF"];   // index 10 = highlight/selection (white)
 const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const grid = (g, focus) => {
-  const F = new Set((focus || []).map(([r, c]) => r + "," + c));   // cells the step is "looking at" → white highlight
-  return `<table class=grid>${g.map((r, ri) => `<tr>${r.map((v, ci) => `<td class="${F.has(ri + "," + ci) ? "hl" : ""}" style="background:${PAL[v] || "#000"}"></td>`).join("")}</tr>`).join("")}</table>`;
-};
+const grid = g => `<table class=grid>${g.map(r => `<tr>${r.map(v => `<td style="background:${PAL[v] || "#000"}"></td>`).join("")}</tr>`).join("")}</table>`;   // value 10 = white (selection is a real grid cell)
 
 function card(t) {
   const m = t.meta, tr = m.trace || [];
   const steps = tr.map((s, i) => `<div class=step>
       <div class=slbl>${i === 0 ? "INPUT" : "step " + s.step + " · " + esc(s.op)}</div>
-      ${grid(s.grid, s.focus)}
+      ${grid(s.grid)}
       <div class=snl>${esc(s.nl || "")}</div></div>`).join(`<div class=arrow>▶</div>`);
   return `<section class=card>
     <div class=top><h2>${esc(m.program && m.program.nl || m.rule || "")}</h2>

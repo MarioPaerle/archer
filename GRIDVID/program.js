@@ -469,8 +469,13 @@ function buildProgramTask(prog, opts = {}) {
   const nl = nlNode(prog.node), dtext = dslText(prog.node);
   // the KEYSTONE: the step-by-step "thinking-grids" execution trace on the test pair (each step engine-verified)
   const tr = runWithTrace(prog.node, t.inScene);
+  // the SELECTION is part of the grid: a derive/selection step paints its focus cells with the special HIGHLIGHT
+  // value 10 (rendered white) — so "what the step is looking at" is a real cell value in the thinking-grid, not an
+  // overlay. focus is also kept as a cell list (training attention signal).
+  const HILITE = 10;
+  const paintFocus = (g, focus) => { if (!focus || !focus.length) return g; const o = g.map(r => r.slice()); for (const [r, c] of focus) if (r >= 0 && c >= 0 && r < o.length && c < o[0].length) o[r][c] = HILITE; return o; };
   const trace = [{ step: 0, op: "input", nl: "the input scene", grid: t.in[0], focus: [] }]
-    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: renderScene(s.scene), focus: s.focus || [] })));
+    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: paintFocus(renderScene(s.scene), s.focus), focus: s.focus || [] })));
   const id = "PRG-" + crypto.createHash("sha1").update(JSON.stringify([prog.name, examples, t.in, t.out])).digest("hex").slice(0, 8);
   return {
     format: "prodigy-task", version: 1, width, height, palette: "arc10", fps: 1,
