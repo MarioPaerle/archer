@@ -77,6 +77,7 @@ function flags(args) {
     else if (a === "--retries") f.retries = +args[++i];
     else if (a === "--stub") f.stub = true;
     else if (a === "--static") f.static = true;
+    else if (a === "--draw") f.draw = true;
     else if (a === "--dynamic") f.dynamic = true;
     else if (a === "--hard") f.hard = true;
     else if (a === "--objective") f.objective = args[++i];
@@ -882,7 +883,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const templatesDir = f.templates || path.join(__dirname, "scenes", "library");
     let registry; try { registry = buildFunctionRegistry(templatesDir, f.seedBase || 1); } catch (e) { return console.error("prompt: " + e.message); }
     const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), menu = proposeMenu(rng, registry, { k: f.k || 3 });
-    const p = buildPrompt(registry, menu, { templatesDir });
+    const p = buildPrompt(registry, menu, { templatesDir, drawGlyphs: f.draw, static: f.static });
     if (f.out) { fs.mkdirSync(path.dirname(f.out) || ".", { recursive: true }); fs.writeFileSync(f.out, p + "\n"); console.log("prompt → " + f.out); }
     else console.log(p);
   },
