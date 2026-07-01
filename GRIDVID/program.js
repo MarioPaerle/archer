@@ -171,6 +171,23 @@ function applyNode(node, scene, env = {}) {
   let s = cloneScene(scene);
   switch (node.op) {
     case "bind": { const r = resolveRef(node.pick, s); if (r) env[node.name] = r; return s; }   // capture the anchor for later steps
+    // INTRINSIC COMPLEXITY (P1, symbol grounding): DERIVE a colour map from an in-scene LEGEND (paired swatches in
+    // the first two columns: col-0 src ↔ col-1 tgt at the same row), then a later step CONSUMES it. The map is NOT
+    // in the program — the model must READ it off the grid (and it varies per example) ⇒ a genuinely deep 1-rule.
+    case "derive": {
+      const src = {}, tgt = {};
+      for (const o of s.objects) { const [r, c] = centerOf(o).map(Math.round); if (c === 0) src[r] = o.color; else if (c === 1) tgt[r] = o.color; }
+      const M = {}; for (const r of Object.keys(src)) if (tgt[r] != null) M[src[r]] = tgt[r];
+      env[node.name] = { map: M }; return s;
+    }
+    case "apply_map": {                              // recolour the WORK objects (right of the legend) by the derived map
+      const M = (env[node.map] || {}).map || {};
+      for (const o of s.objects) { if (centerOf(o)[1] <= 1.5) continue; if (o.color in M) o.color = M[o.color]; }
+      return s;
+    }
+    case "erase_legend": {                            // drop the legend region (col 0..1) — the "instructions" are consumed
+      s.objects = s.objects.filter(o => centerOf(o)[1] > 1.5); return s;
+    }
     case "apply": {                               // apply ONE transform to a selected subset
       const pred = selPred(node.sel);
       for (const o of s.objects) if (pred(o, s)) applyPure(node.transform, o, s, env);
@@ -264,6 +281,7 @@ function serializeNode(node) {
   if (node.region) j.region = node.region; if (node.node) j.node = serializeNode(node.node);
   if (node.steps) j.steps = node.steps.map(serializeNode); if (node.branches) j.branches = node.branches.map(serializeNode);
   if (node.n != null) j.n = node.n; if (node.objects) j.objects = node.objects.length + " overlay-objs";
+  if (node.name) j.name = node.name; if (node.map) j.map = node.map; if (node.pick) j.pick = node.pick;
   return j;
 }
 function nodeDepth(node) {
@@ -319,6 +337,9 @@ function nlNode(node) {
   if (!node) return "";
   switch (node.op) {
     case "bind": return "find " + (_ANCHOR[node.pick] || node.pick);
+    case "derive": return "read the legend in the left margin (a colour map: each src swatch → its target)";
+    case "apply_map": return "recolour every object according to that legend";
+    case "erase_legend": return "erase the legend";
     case "apply": return nlSel(node.sel) + " " + nlTransform(node.transform);
     case "dispatch": { const k = node.key && node.key.k || "property"; const cs = Object.entries(node.cases || {}).map(([v, t]) => (_CN[v] || v) + " → " + nlTransform(t)); return "each object, by its " + k + ": " + cs.join("; "); }
     case "mask": return "within the " + (node.region && node.region.side || node.region && node.region.q || "region") + ", " + nlNode(node.node);
@@ -334,6 +355,9 @@ function dslText(node) {
   const a = x => JSON.stringify(x).replace(/"/g, "");
   switch (node.op) {
     case "bind": return "bind(" + node.name + "=" + node.pick + ")";
+    case "derive": return "derive(" + node.name + "=legend)";
+    case "apply_map": return "apply_map(" + node.map + ")";
+    case "erase_legend": return "erase_legend";
     case "apply": return "apply(" + (node.sel ? (node.sel.s + (node.sel.color != null ? ":" + node.sel.color : node.sel.cls ? ":" + node.sel.cls : "")) : "all") + ", " + (node.transform ? node.transform.t + (node.transform.color != null ? ":" + node.transform.color : node.transform.dir ? ":" + node.transform.dir : node.transform.ref ? ":" + node.transform.ref : "") : "identity") + ")";
     case "dispatch": return "dispatch(" + (node.key && node.key.k) + "){" + Object.entries(node.cases || {}).map(([v, t]) => v + ":" + t.t + (t.dir ? ":" + t.dir : t.color != null ? ":" + t.color : "")).join(",") + "}";
     case "mask": return "mask(" + a(node.region) + ", " + dslText(node.node) + ")";
@@ -570,6 +594,48 @@ function generateComposed(opts = {}) {
   return { records: out, emitted: out.length };
 }
 
+// ---- P1 LEGEND / symbol grounding: the derive-then-consume DEEP rule (one intrinsically-deep rule, not N glued) ----
+function sampleLegendScene(rng) {
+  const H = rng.int(10, 13), W = rng.int(12, 15), K = 3;
+  const pal = FULL_PALETTE.slice().sort(() => rng.int(0, 1) - 0.5), src = pal.slice(0, K), tgt = pal.slice(K, 2 * K);
+  const objects = [], occ = new Set();
+  for (let i = 0; i < K; i++) {   // the LEGEND: col-0 src swatch ↔ col-1 tgt swatch, one row each (the map, IN the grid, varies per example)
+    objects.push({ id: "ls" + i, cells: [[0, 0]], r: i, c: 0, color: src[i], kind: "swatch" }); occ.add(i + ",0");
+    objects.push({ id: "lt" + i, cells: [[0, 0]], r: i, c: 1, color: tgt[i], kind: "swatch" }); occ.add(i + ",1");
+  }
+  const shapes = [[[0, 0], [0, 1], [1, 0]], [[0, 0], [0, 1], [1, 0], [1, 1]], [[0, 0]], [[0, 0], [1, 0], [0, 1], [2, 0]]];
+  const nWork = rng.int(3, 5);
+  for (let w = 0; w < nWork; w++) {
+    const col = src[rng.int(0, K - 1)], shp = shapes[rng.int(0, shapes.length - 1)];
+    for (let t = 0; t < 90; t++) {
+      const r0 = rng.int(0, H - 3), c0 = rng.int(3, W - 3); let clash = false;
+      for (const [dr, dc] of shp) { for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1 && !clash; b++) if (occ.has((r0 + dr + a) + "," + (c0 + dc + b))) clash = true; }
+      if (clash) continue;
+      for (const [dr, dc] of shp) occ.add((r0 + dr) + "," + (c0 + dc));
+      objects.push({ id: "w" + w, cells: shp.map(x => x.slice()), r: r0, c: c0, color: col, kind: "work" }); break;
+    }
+  }
+  return { H, W, bg: 0, objects };
+}
+const LEGEND_PROG = {
+  name: "legend_recolor", prior: "symbolic/legend",
+  rule: "The two leftmost columns are a LEGEND: each row pairs a source colour (col 0) with a target colour (col 1). Recolour every object to the RIGHT of the legend by that mapping, then the legend is removed. (You must READ the map off the grid — it changes every example.)",
+  concepts: ["symbol-grounding", "legend", "in-context-map", "derive-then-consume", "dependency"],
+  node: { op: "seq", steps: [{ op: "derive", name: "M" }, { op: "apply_map", map: "M" }, { op: "erase_legend" }] },
+  sampler: sampleLegendScene,
+};
+function generateLegend(opts = {}) {
+  const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 131);
+  const out = []; let guard = 0;
+  while (out.length < n && guard++ < n * 20) {
+    let task; try { task = buildProgramTask(LEGEND_PROG, { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    if (!task.meta.teaching.coherent) continue;
+    if (!task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out))) continue;
+    out.push(task);
+  }
+  return { records: out, emitted: out.length };
+}
+
 // ============================================================ self-test
 function selfTest() {
   const names = Object.keys(LIBRARY);
@@ -613,6 +679,11 @@ if (require.main === module) {
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} composed tasks → ${o}`); }
     else { for (const t of r.records) console.error(`# depth ${t.meta.depth}  ${t.meta.rule}`); console.error(`\n${r.emitted} composed tasks`); }
   }
+  else if (args.includes("--legend")) {   // P1 derive-then-consume DEEP rule (legend / symbol grounding)
+    const n = +flag("--legend", 12), o = flag("-o", null), r = generateLegend({ n, seed: +flag("--seed", 1) });
+    if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} legend tasks → ${o}`); }
+    else { for (const t of r.records) console.error("# " + (t.meta.program.nl)); console.error(`\n${r.emitted} legend tasks`); }
+  }
   else if (args.includes("--list")) { for (const [k, v] of Object.entries(LIBRARY)) console.log(k.padEnd(30), "—", v.rule); }
   else if (args.includes("--demo")) {
     const name = flag("--demo", "gravity_on_red"), task = buildDemo(name, { seed: +flag("--seed", 1) });
@@ -627,6 +698,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
-  sampleChain, generateComposed,
+  sampleChain, generateComposed, generateLegend,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };
