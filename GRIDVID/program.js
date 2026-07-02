@@ -454,11 +454,11 @@ function runWithTrace(node, scene, env = {}) {
   const steps = [];
   if (node.op === "seq") {
     let acc = cloneScene(scene);
-    for (const step of node.steps) { const focus = focusOf(step, acc); acc = applyNode(step, acc, env); steps.push({ op: step.op, nl: nlNode(step), dsl: dslText(step), scene: acc, focus }); }
+    for (const step of node.steps) { const pre = cloneScene(acc), focus = focusOf(step, acc); acc = applyNode(step, acc, env); steps.push({ op: step.op, nl: nlNode(step), dsl: dslText(step), preScene: pre, scene: acc, focus }); }
     return { scene: acc, steps };
   }
-  const focus = focusOf(node, scene), out = applyNode(node, scene, env);
-  steps.push({ op: node.op, nl: nlNode(node), dsl: dslText(node), scene: out, focus });
+  const pre = cloneScene(scene), focus = focusOf(node, scene), out = applyNode(node, scene, env);
+  steps.push({ op: node.op, nl: nlNode(node), dsl: dslText(node), preScene: pre, scene: out, focus });
   return { scene: out, steps };
 }
 
@@ -491,13 +491,30 @@ function buildProgramTask(prog, opts = {}) {
   const nl = nlNode(prog.node), dtext = dslText(prog.node);
   // the KEYSTONE: the step-by-step "thinking-grids" execution trace on the test pair (each step engine-verified)
   const tr = runWithTrace(prog.node, t.inScene);
-  // the SELECTION is part of the grid: a derive/selection step paints its focus cells with the special HIGHLIGHT
-  // value 10 (rendered white) — so "what the step is looking at" is a real cell value in the thinking-grid, not an
-  // overlay. focus is also kept as a cell list (training attention signal).
+  // CoVT v2 (Mario 2026-07-02): each program step becomes a LOOK→DO pair of thinking-grids.
+  //   LOOK = the PRE-state with a HALO: background cells 8-adjacent to the focused cells get the reserved
+  //          HIGHLIGHT value 10 (white) — the "finger" points WITHOUT covering what it points at
+  //          (v1 painted 10 OVER the object pixels, destroying the very information being attended).
+  //   DO   = the clean POST-state. The step's effect is the exact diff LOOK(minus halo)→DO — unambiguous
+  //          because the pair is adjacent in the sequence. Steps with no focus (e.g. erase_legend) skip LOOK.
   const HILITE = 10;
-  const paintFocus = (g, focus) => { if (!focus || !focus.length) return g; const o = g.map(r => r.slice()); for (const [r, c] of focus) if (r >= 0 && c >= 0 && r < o.length && c < o[0].length) o[r][c] = HILITE; return o; };
-  const trace = [{ step: 0, op: "input", nl: "the input scene", grid: t.in[0], focus: [] }]
-    .concat(tr.steps.map((s, i) => ({ step: i + 1, op: s.op, nl: s.nl, dsl: s.dsl, grid: paintFocus(renderScene(s.scene), s.focus), focus: s.focus || [] })));
+  const paintHalo = (g, focus) => {
+    if (!focus || !focus.length) return g;
+    const o = g.map(r => r.slice()), H = o.length, W = o[0].length;
+    for (const [r, c] of focus) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const nr = r + a, nc = c + b;
+      if (nr >= 0 && nc >= 0 && nr < H && nc < W && o[nr][nc] === 0) o[nr][nc] = HILITE;   // halo on BG only
+    }
+    return o;
+  };
+  const trace = [{ step: 0, op: "input", phase: "input", nl: "the input scene", grid: t.in[0], focus: [] }];
+  tr.steps.forEach((s, i) => {
+    const pre = renderScene(s.preScene), post = renderScene(s.scene);
+    const changed = JSON.stringify(pre) !== JSON.stringify(post);
+    if (s.focus && s.focus.length) trace.push({ step: i + 1, op: s.op, phase: "look", nl: "LOOK: " + s.nl, dsl: s.dsl, grid: paintHalo(pre, s.focus), focus: s.focus });
+    if (changed) trace.push({ step: i + 1, op: s.op, phase: "do", nl: s.nl, dsl: s.dsl, grid: post, focus: [] });
+    // pure-observation steps (derive/bind: scene unchanged) emit LOOK only — no duplicate no-op panel
+  });
   const id = "PRG-" + crypto.createHash("sha1").update(JSON.stringify([prog.name, examples, t.in, t.out])).digest("hex").slice(0, 8);
   return {
     format: "prodigy-task", version: 1, width, height, palette: "arc10", fps: 1,

@@ -305,6 +305,7 @@ const GUARDRAILS = [
   "- Do NOT invent syntax (no 'to by', etc.) — use only the forms in the GRAMMAR below.",
   "- Mark the IN/OUT split with 'cut'. Label the task with 'rule ...' and 'concept ...'.",
   "- VARY every non-rule feature across examples: use 'random', 'color rand', and 'rand LO HI' sizes.",
+  "- OBJECTS MUST NEVER TOUCH: if you place objects with fixed 'at' coords, use FIXED sizes and leave ≥2 empty cells between bounding boxes ('at' + 'rand' sizes = objects grow into each other and collide).",
 ];
 function grammarSlice(verbs) {
   const gram = E.GRAMMAR.split(/\r?\n/), out = [];
@@ -446,6 +447,37 @@ function outColorsGrounded(task) {
   for (const [i, o] of pairs) { const inC = cset(i); for (const x of cset(o)) if (!inC.has(x)) magic.add(x); }
   return { ok: magic.size === 0, magic: [...magic] };
 }
+// two distinct objects TOUCHING in an IN grid = an unreadable merged mass (Mario 2026-07-02, "the objects
+// collide brutally"): flag any pair of different-colour 4-connected components that are 8-adjacent in an IN.
+// Sparse object scenes only (the LLM static path) — dense fields (lattice/noise/voronoi) are not routed here.
+function objectsTouching(task) {
+  const last = v => v[v.length - 1];
+  const grids = task.examples.map(e => last(e.in)).concat([last(task.in)]);
+  for (const g of grids) {
+    const H = g.length, W = g[0].length, comp = Array.from({ length: H }, () => new Array(W).fill(-1));
+    let nc = 0;
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {   // 4-connected same-colour components
+      if (!g[r][c] || comp[r][c] >= 0) continue;
+      const col = g[r][c], q = [[r, c]]; comp[r][c] = nc;
+      while (q.length) {
+        const [rr, cc] = q.pop();
+        for (const [dr, dc] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+          const nr = rr + dr, nco = cc + dc;
+          if (nr >= 0 && nco >= 0 && nr < H && nco < W && g[nr][nco] === col && comp[nr][nco] < 0) { comp[nr][nco] = nc; q.push([nr, nco]); }
+        }
+      }
+      nc++;
+    }
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {   // any two DIFFERENT components 8-adjacent?
+      if (comp[r][c] < 0) continue;
+      for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+        const nr = r + dr, nco = c + dc;
+        if (nr >= 0 && nco >= 0 && nr < H && nco < W && comp[nr][nco] >= 0 && comp[nr][nco] !== comp[r][c]) return true;
+      }
+    }
+  }
+  return false;
+}
 // the self-correcting loop for ONE task: call → verify → on reject, re-prompt with the reasons. Returns {task,...} or null.
 async function llmGenerateOne(prompt, callModel, opts = {}) {
   const retries = opts.retries == null ? 2 : opts.retries; let feedback = "", attempts = 0;
@@ -458,10 +490,14 @@ async function llmGenerateOne(prompt, callModel, opts = {}) {
     catch (e) { feedback = "parse error: " + e.message.replace(/\n[\s\S]*/, ""); trail.push("parse"); continue; }
     const te = task.meta.teaching;
     const grounded = outColorsGrounded(task);   // Mario: every OUT colour must already appear in the IN (no invented "magic" colours)
-    if (te.ok && te.coherent && te.examplesVary !== false && grounded.ok) return { task, scene, attempts, trail };
-    feedback = grounded.ok ? rejectReasons(task)
-      : "the OUT uses colour(s) " + grounded.magic.join(",") + " that appear NOWHERE in the IN. Every colour in the output must already be present in the input — recolour using a colour that is in the scene, or put that colour in the input. No invented answer/marker colours.";
-    trail.push(grounded.ok ? feedback.split(":")[0] : "magic-colour");
+    const touching = opts.allowTouching ? false : objectsTouching(task);   // Mario: colliding/merged objects are unreadable
+    if (te.ok && te.coherent && te.examplesVary !== false && grounded.ok && !touching) return { task, scene, attempts, trail };
+    feedback = !grounded.ok
+      ? "the OUT uses colour(s) " + grounded.magic.join(",") + " that appear NOWHERE in the IN. Every colour in the output must already be present in the input — recolour using a colour that is in the scene, or put that colour in the input. No invented answer/marker colours."
+      : touching
+        ? "two objects TOUCH or overlap in an input grid — an unreadable merged mass. Spread the objects out: 'random' placement over a large box, or fixed 'at' coords with FIXED sizes and ≥2 empty cells between bounding boxes (never 'at' + 'rand' sizes)."
+        : rejectReasons(task);
+    trail.push(!grounded.ok ? "magic-colour" : touching ? "touching" : feedback.split(":")[0]);
   }
   return null;
 }

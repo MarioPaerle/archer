@@ -11,10 +11,14 @@ const grid = g => `<table class=grid>${g.map(r => `<tr>${r.map(v => `<td style="
 
 function card(t) {
   const m = t.meta, tr = m.trace || [];
-  const steps = tr.map((s, i) => `<div class=step>
-      <div class=slbl>${i === 0 ? "INPUT" : "step " + s.step + " · " + esc(s.op)}</div>
+  // CoVT v2: LOOK/DO pairs — LOOK panels (halo attention on the PRE-state) get the 👁 eye styling; DO panels
+  // are the clean post-state. v1 traces (no phase field) render as before.
+  const lbl = (s, i) => i === 0 ? "INPUT" : (s.phase === "look" ? "👁 look · " + esc(s.op) : "step " + s.step + " · " + esc(s.op));
+  const steps = tr.map((s, i) => `<div class="step${s.phase === "look" ? " look" : ""}">
+      <div class=slbl>${lbl(s, i)}</div>
       ${grid(s.grid)}
-      <div class=snl>${esc(s.nl || "")}</div></div>`).join(`<div class=arrow>▶</div>`);
+      <div class=snl>${esc(s.nl || "")}</div></div>`)
+    .join(`<div class=arrow>▶</div>`);
   return `<section class=card>
     <div class=top><h2>${esc(m.program && m.program.nl || m.rule || "")}</h2>
       <span class=dsl>${esc(m.program && m.program.dsl_text || "")}</span></div>
@@ -33,6 +37,8 @@ h1{margin:0 0 4px;color:#67e8f9;font-size:22px}.lead{color:#aab;max-width:1100px
 .top h2{margin:0;font-size:13px;color:#a7f3d0}.dsl{color:#fde68a;font-size:11px}
 .trace{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;margin-top:12px}
 .step{display:flex;flex-direction:column;align-items:center;gap:4px;max-width:180px}
+.step.look table.grid{outline:2px dashed #67e8f9;outline-offset:2px}   /* LOOK panels: attention phase (halo in-grid) */
+.step.look .slbl{color:#fde047}
 .slbl{color:#67e8f9;font-size:10px}.snl{color:#9aa;font-size:10px;text-align:center;line-height:1.3}
 .arrow{color:#4a4a55;align-self:center;font-size:14px;padding-top:20px}
 table.grid{border-collapse:collapse;background:#111}table.grid td{width:11px;height:11px;padding:0;border:1px solid #3a3a3a}

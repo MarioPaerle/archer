@@ -293,3 +293,11 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [x] (2026-06-20) Cheap structural coherence guard in the engine (zero-LLM) — `meta.teaching.coherent`.
 - [x] (2026-06-20) Physics pack: explode, shatter, burst, path-follow, bounce-ball, orbit, spin.
 - [x] (2026-06-20) Whole-grid layer (transpose/rotate/map/solve) — closes the ARC-AGI-2 expressivity gap.
+
+## 🔥 Open — Mario 2026-07-02 (sera): Haiku quality + CoVT
+- [ ] **bind_transform positional-delta leak** (the "WTF" task 3be20166a3d7): the A→B delta captures move+recolour,
+      so "apply T to C" TELEPORTS C when the rule text says only "changes colour". Add `bind_transform ... attr color|move|both`
+      to engine.js (default both = back-compat), update the analogy exemplar to state the move or use attr color.
+- [ ] **CoVT S1 scratch margin** (working memory strip where derive steps WRITE their value — legend map as swatch
+      pairs, containment as dot pairs, count as tally; erased on consume). Spec: DESIGN/2026-07-02-chain-of-visual-thoughts-v2.md
+- [ ] **CoVT S3 decodability metric**: decodeTrace(grids)→program-sketch parser + corpus CI round-trip ≥99%.
