@@ -15,6 +15,7 @@ const MODES = {
   trace: "./build_trace_showcase.js",
   builder: "./build_builder_showcase.js",
   construct: "./build_construct_gallery.js",
+  graph: "./build_graph_explorer.js",   // PAN-197: interactive family/admits explorer
 };
 const mode = process.argv[2];
 if (!MODES[mode]) {
