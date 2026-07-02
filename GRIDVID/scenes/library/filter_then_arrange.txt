@@ -1,0 +1,16 @@
+# RULE (2-step dependent: filter by predicate THEN order): keep ONLY the odd-celled objects, then
+# line the survivors up in a row ordered from smallest to largest.
+rule keep only the shapes with an odd number of cells, then arrange the survivors in a row from smallest to largest
+concept parity filter ordering arrangement dependent-chain
+difficulty 0.78
+grid 16 16
+seed 1
+spawn plus rand 2 3 color rand 2 8 random 1 1 6 7
+spawn square 2 color rand 2 8 random 1 9 6 14
+spawn diamond rand 2 3 color rand 2 8 random 8 1 13 7
+spawn rect 2 3 color rand 2 8 random 8 9 13 14
+hold 1
+cut
+extract where parity is odd
+arrange all by size at 12 1 gap 1 dir h
+snap 1

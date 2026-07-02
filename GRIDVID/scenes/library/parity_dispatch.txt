@@ -1,0 +1,22 @@
+# RULE (arithmetic predicate, grounded targets): each object is routed by the PARITY of its cell count.
+# Even-area objects take the colour of the LEFT key swatch; odd-area objects take the RIGHT key swatch.
+rule objects with an even number of cells become the colour of the left key; odd-celled objects the colour of the right key
+concept parity counting dispatch symbol-grounding contextual
+difficulty 0.72
+grid rand 14 17 13 15
+seed 1
+spawn dot at 0 0 color 8 id keyeven
+spawn dot at 0 2 color 6 id keyodd
+spawn square rand 2 3 color rand 2 4 random 2 1 6 6
+spawn plus rand 2 3 color rand 2 4 random 2 8 6 11
+spawn rect rand 2 3 rand 2 3 color rand 2 4 random 8 1 11 6
+spawn diamond 2 color rand 2 4 random 8 8 11 11
+hold 1
+cut
+dispatch all by parity
+  case even
+    recolor it tint 8
+  case odd
+    recolor it tint 6
+end
+snap 1

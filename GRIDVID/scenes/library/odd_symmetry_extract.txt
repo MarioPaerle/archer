@@ -1,0 +1,15 @@
+# RULE (predicate minority): every object but ONE is symmetric; the answer is the odd asymmetric one.
+# Depth: per-object symmetry test -> minority detection -> extraction+crop.
+rule all shapes are symmetric except one; the answer is the lone asymmetric shape, cropped
+concept odd-one-out symmetry predicate selection extraction
+difficulty 0.75
+grid rand 14 17 14 17
+seed 1
+spawn square rand 2 3 color rand 2 8 random 1 1 5 6
+spawn plus rand 2 3 color rand 2 8 random 1 8 5 12
+spawn diamond 2 color rand 2 8 random 6 1 10 6
+spawn Lshape rand 3 4 color rand 2 8 random 6 8 11 12
+hold 1
+cut
+extract odd by symmetric
+crop pad 1

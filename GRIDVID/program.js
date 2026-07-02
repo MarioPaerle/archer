@@ -822,6 +822,64 @@ const BAND_PROG = {
   node: { op: "seq", steps: [{ op: "derive_bands", name: "B" }, { op: "apply_bands", map: "B" }] },
   sampler: sampleBandScene,
 };
+// LEGEND → CONTAINMENT chained deep rule (Mario 2026-07-02: "the thinking should be LONGER").
+// TWO derive→consume stages in ONE rule: first read the colour legend and apply it, then work out which
+// frame encloses each object and let the frame override. Dchain 5 ⇒ a 6-grid thinking trace.
+function sampleLegendContainScene(rng) {
+  const H = rng.int(13, 16), W = rng.int(15, 18), objects = [], occ = new Set();
+  const pal = FULL_PALETTE.slice().sort(() => rng.int(0, 1) - 0.5);
+  const K = 2, src = pal.slice(0, K), tgt = pal.slice(K, 2 * K), frameCol = pal[2 * K] != null ? pal[2 * K] : 9;
+  for (let i = 0; i < K; i++) {   // the legend: col-0 src ↔ col-1 tgt
+    objects.push({ id: "ls" + i, cells: [[0, 0]], r: i, c: 0, color: src[i], kind: "swatch" }); occ.add(i + ",0");
+    objects.push({ id: "lt" + i, cells: [[0, 0]], r: i, c: 1, color: tgt[i], kind: "swatch" }); occ.add(i + ",1");
+  }
+  const frameCells = s => { const o = []; for (let r = 0; r < s; r++) for (let c = 0; c < s; c++) if (r === 0 || c === 0 || r === s - 1 || c === s - 1) o.push([r, c]); return o; };
+  let id = 0, frames = 0;
+  for (let f = 0; f < 2 && frames < 2; f++) {   // frames well right of the legend; one encloses a work object
+    const s = rng.int(4, 5);
+    for (let t = 0; t < 120; t++) {
+      const r0 = rng.int(0, H - s), c0 = rng.int(4, W - s); const fc = frameCells(s);
+      if (fc.some(([dr, dc]) => { for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (occ.has((r0 + dr + a) + "," + (c0 + dc + b))) return true; return false; })) continue;
+      for (const [dr, dc] of fc) occ.add((r0 + dr) + "," + (c0 + dc));
+      objects.push({ id: "F" + (id++), cells: fc, r: r0, c: c0, color: frameCol, kind: "frame" });
+      const col = src[rng.int(0, K - 1)];   // an ENCLOSED work object (legend colour → gets both stages)
+      objects.push({ id: "wi" + (id++), cells: [[0, 0], [0, 1]], r: r0 + Math.floor(s / 2), c: c0 + 1, color: col, kind: "work" });
+      for (let b = 0; b < 2; b++) occ.add((r0 + Math.floor(s / 2)) + "," + (c0 + 1 + b));
+      frames++; break;
+    }
+  }
+  const shapes = [[[0, 0]], [[0, 0], [0, 1], [1, 0]], [[0, 0], [1, 0]]];
+  for (let w = 0; w < rng.int(2, 3); w++) {   // free work objects (legend applies, no frame)
+    const col = src[rng.int(0, K - 1)], shp = shapes[rng.int(0, shapes.length - 1)];
+    for (let t = 0; t < 80; t++) {
+      const r0 = rng.int(0, H - 3), c0 = rng.int(3, W - 3); let clash = false;
+      for (const [dr, dc] of shp) { for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1 && !clash; b++) if (occ.has((r0 + dr + a) + "," + (c0 + dc + b))) clash = true; }
+      if (clash) continue;
+      for (const [dr, dc] of shp) occ.add((r0 + dr) + "," + (c0 + dc));
+      objects.push({ id: "w" + (id++), cells: shp.map(x => x.slice()), r: r0, c: c0, color: col, kind: "work" }); break;
+    }
+  }
+  return { H, W, bg: 0, objects };
+}
+const LEGEND_CONTAIN_PROG = {
+  name: "legend_then_containment", prior: "symbolic+topology/chained",
+  rule: "TWO chained deep steps: (1) the two leftmost columns are a colour LEGEND — recolour every object by it, then erase the legend; (2) any object ENCLOSED by a frame then takes the frame's colour instead. Both the map and the containment must be read off the grid.",
+  concepts: ["symbol-grounding", "legend", "topology", "containment", "derive-then-consume", "chained-deep-rule", "dependency"],
+  node: { op: "seq", steps: [{ op: "derive", name: "M" }, { op: "apply_map", map: "M" }, { op: "erase_legend" }, { op: "derive_containment", name: "C" }, { op: "apply_container", map: "C" }] },
+  sampler: sampleLegendContainScene,
+};
+function generateLegendContain(opts = {}) {
+  const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 191);
+  const out = []; let guard = 0;
+  while (out.length < n && guard++ < n * 30) {
+    let task; try { task = buildProgramTask(LEGEND_CONTAIN_PROG, { seed: rng.int(1, 2e9), nEx: 3 }); } catch (e) { continue; }
+    if (!task.meta.teaching.coherent) continue;
+    if (!task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out))) continue;
+    if (!groundedColors(task)) continue;
+    out.push(task);
+  }
+  return { records: out, emitted: out.length };
+}
 function generateBands(opts = {}) {
   const n = opts.n || 12, rng = E.makeRng((opts.seed || 1) * 2654435761 + 151);
   const out = []; let guard = 0;
@@ -839,12 +897,14 @@ function generateBands(opts = {}) {
 // per-family quotas, the sensibility gate (inside buildProgramTask), and an HONEST coverage report (no silent
 // caps — if a family under-fills its quota, say so). Deep rules (Dchain≥2, derive→consume) carry most of the mix.
 const CORPUS_STRATA = [
-  { key: "legend", frac: 0.18, gen: (n, s) => generateLegend({ n, seed: s }) },                    // Dchain 3 symbol-grounding
-  { key: "containment", frac: 0.16, gen: (n, s) => generateContainment({ n, seed: s }) },           // Dchain 2 topology
-  { key: "bands", frac: 0.16, gen: (n, s) => generateBands({ n, seed: s }) },                       // Dchain 2 partition+key
-  { key: "composed_d2", frac: 0.18, gen: (n, s) => generateComposed({ n, depth: [2], seed: s }) },  // dependent chains
-  { key: "composed_d3", frac: 0.16, gen: (n, s) => generateComposed({ n, depth: [3], seed: s }) },
-  { key: "contextual", frac: 0.16, gen: (n, s) => generateComposed({ n, depth: [1, 2], seed: s + 7 }) }, // dispatch/anchor singles
+  { key: "deep_seq", frac: 0.16, gen: (n, s) => generateLegendContain({ n, seed: s }) },            // Dchain 5 — the LONG thinking (legend→containment chained)
+  { key: "legend", frac: 0.14, gen: (n, s) => generateLegend({ n, seed: s }) },                    // Dchain 3 symbol-grounding
+  { key: "containment", frac: 0.12, gen: (n, s) => generateContainment({ n, seed: s }) },           // Dchain 2 topology
+  { key: "bands", frac: 0.12, gen: (n, s) => generateBands({ n, seed: s }) },                       // Dchain 2 partition+key
+  { key: "composed_d2", frac: 0.14, gen: (n, s) => generateComposed({ n, depth: [2], seed: s }) },  // dependent chains
+  { key: "composed_d3", frac: 0.14, gen: (n, s) => generateComposed({ n, depth: [3], seed: s }) },
+  { key: "composed_d4", frac: 0.10, gen: (n, s) => generateComposed({ n, depth: [4], seed: s + 3 }) }, // longer chains → longer traces
+  { key: "contextual", frac: 0.08, gen: (n, s) => generateComposed({ n, depth: [1, 2], seed: s + 7 }) }, // dispatch/anchor singles
 ];
 function generateCorpus(opts = {}) {
   const n = opts.n || 60, seed = opts.seed || 1, records = [], coverage = {};
@@ -955,6 +1015,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
-  sampleChain, generateComposed, generateLegend, generateContainment, generateBands, generateCorpus,
+  sampleChain, generateComposed, generateLegend, generateContainment, generateBands, generateLegendContain, generateCorpus,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };

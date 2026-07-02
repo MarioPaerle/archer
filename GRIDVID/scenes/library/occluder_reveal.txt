@@ -1,0 +1,16 @@
+# RULE (occlusion prior): a grey vertical strip covers the middle of the scene; the answer removes it,
+# revealing the full bars underneath. Bars span the whole width, so every colour stays visible in the IN.
+rule remove the grey occluding strip to reveal the bars hidden behind it
+concept occlusion layers removal object-permanence
+difficulty 0.6
+grid 13 14
+seed 1
+spawn rect 1 12 at 2 1 color rand 2 4
+spawn rect 1 12 at 5 1 color rand 6 8
+spawn rect 1 12 at 8 1 color rand 2 8
+spawn rect 1 12 at 10 1 color rand 2 8
+spawn rect 11 3 random 1 4 1 8 color 5 layer 2
+hold 1
+cut
+remove color 5
+snap 1

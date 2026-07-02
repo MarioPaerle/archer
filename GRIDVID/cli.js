@@ -877,7 +877,7 @@ h1{font:16px monospace;color:#ff5fae;letter-spacing:1px}.sub{color:#8f8f8f;margi
     const f = flags(args);
     const templatesDir = f.templates || path.join(__dirname, "scenes", "library");
     let registry; try { registry = buildFunctionRegistry(templatesDir, f.seedBase || 1); } catch (e) { return console.error("prompt: " + e.message); }
-    const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), menu = proposeMenu(rng, registry, { k: f.k || 3 });
+    const rng = E.makeRng((f.seedBase || 1) * 40503 + 7), menu = proposeMenu(rng, registry, { k: f.k || 3, static: f.static, target: f.target });
     const p = buildPrompt(registry, menu, { templatesDir, drawGlyphs: f.draw, static: f.static });
     if (f.out) { fs.mkdirSync(path.dirname(f.out) || ".", { recursive: true }); fs.writeFileSync(f.out, p + "\n"); console.log("prompt → " + f.out); }
     else console.log(p);

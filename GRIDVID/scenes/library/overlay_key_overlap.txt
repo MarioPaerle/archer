@@ -1,0 +1,14 @@
+# RULE (superposition + in-scene key): superimpose the two figures; cells covered by BOTH take the
+# colour of the small KEY dot in the corner (symbol grounding: the overlap colour is READ off the scene).
+rule superimpose the two shapes; where they overlap, use the colour of the corner key dot
+concept boolean overlay symbol-grounding key intersection
+difficulty 0.74
+grid rand 13 15 11 13
+seed 1
+spawn square rand 3 4 at 1 1 color rand 2 4 id A
+spawn diamond rand 2 3 at 1 7 color rand 6 8 id B
+spawn dot at 10 1 color 9 id key
+hold 1
+cut
+overlay_figs A B at 3 4 overlap 9
+snap 1

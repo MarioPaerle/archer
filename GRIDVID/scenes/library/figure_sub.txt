@@ -1,0 +1,14 @@
+# RULE (boolean carve): figure B is PUNCHED OUT of figure A (A minus B, top-left aligned).
+# The complement of xor/and: what survives of A after B bites into it.
+rule the second shape is punched out of the first: keep the cells of A that B does not cover
+concept boolean figure-algebra subtraction carve combine
+difficulty 0.7
+grid rand 12 15 10 12
+seed 1
+spawn square rand 4 5 at 1 1 color rand 2 8 id A
+spawn diamond rand 2 3 at 1 7 color rand 2 8 id B
+hold 1
+cut
+combine A B op sub into 1 1
+snap 1
+vary flip rot

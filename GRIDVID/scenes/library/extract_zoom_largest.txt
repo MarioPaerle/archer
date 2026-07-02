@@ -1,0 +1,16 @@
+# RULE (3-step dependent chain): find the LARGEST object, magnify it 2x, crop to it.
+# Depth: size comparison -> selection -> scale -> crop. The answer is a new grid.
+rule the answer is the largest object magnified 2x (find it, zoom it, crop to it)
+concept selection scaling extraction size dependent-chain
+difficulty 0.72
+grid rand 14 18 14 18
+seed 1
+spawn square rand 2 3 color rand 2 8 random 1 1 5 6
+spawn plus rand 2 3 color rand 2 8 random 1 8 5 13
+spawn square rand 4 5 color rand 2 8 random 7 1 12 6
+spawn diamond 2 color rand 2 8 random 8 8 12 13
+hold 1
+cut
+extract largest
+zoom largest factor 2
+crop pad 1

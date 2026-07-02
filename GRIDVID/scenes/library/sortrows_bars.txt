@@ -1,0 +1,14 @@
+# RULE (whole-grid counting+ordering): rows are reordered by how much RED they contain (most red sinks to the bottom).
+rule reorder the rows: rows with more red cells move to the bottom
+concept counting ordering sort whole-grid rows
+difficulty 0.7
+grid 14 12
+seed 1
+spawn rect 1 rand 2 9 at 1 1 color 2
+spawn rect 1 rand 2 9 at 4 1 color 2
+spawn rect 1 rand 2 9 at 7 1 color 2
+spawn rect 1 rand 2 9 at 10 1 color 2
+spawn dot random 1 11 12 11 color rand 3 8
+hold 1
+cut
+sort_rows by 2
