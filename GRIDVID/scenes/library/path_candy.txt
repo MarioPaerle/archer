@@ -5,7 +5,7 @@ vary color
 grid rand 11 15 12 16
 bg 0
 seed 1
-path random 16 color 5 walk 4 candy rand 1 8 every 3
+path at 1 1 to 1 6 to 4 6 to 4 10 to 8 10 to 8 11 color 5 walk 4 candy rand 1 8 every 3
 run 2
 cut
 run 11

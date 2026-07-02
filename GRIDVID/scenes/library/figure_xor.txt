@@ -1,5 +1,7 @@
 # RULE: XOR the two figures (cells in exactly ONE of them survive; the shared cells cancel).
 # Carpenter figure-subtraction / PGM XOR. Both figures are top-left aligned, then combined.
+# Variable axes: figure A shape/size/colour, figure B shape/size/colour, global flip/rot augmentation.
+# Invariant axes: boolean operation is XOR, top-left mask alignment, answer colour is inherited from figure A.
 rule keep the cells that belong to exactly one of the two figures (XOR); shared cells cancel
 concept boolean figure-algebra xor combine
 difficulty 0.7
@@ -9,6 +11,6 @@ spawn square rand 3 5 at 1 1 color rand 2 8 id A
 spawn diamond rand 2 3 at 1 7 color rand 2 8 id B
 hold 1
 cut
-combine A B op xor into 1 1 color 4
+combine A B op xor into 1 1
 snap 1
 vary flip rot

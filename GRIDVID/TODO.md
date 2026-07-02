@@ -7,12 +7,49 @@ Running list. Newest priorities on top. Done items move to the bottom.
 > Generation backlog currently: PAN-114/123 (sampler+throughput) · PAN-119/120 (combinators+auto-compose) ·
 > PAN-121/122 (prompt-kit + retry loop) · PAN-115/116 (IQ priors + Qwen novelty) · PAN-124 (semantic guard) · PAN-117 (objectives).
 
+## 🔥 Open — Mario 2026-07-02 (the god-builder direction: ONE last push, make it INCREDIBLE)
+- [ ] **REPO CLEANUP — kill the redundancies** (Mario, explicit): GRIDVID has accreted ~30 one-off `build_*_showcase.js`,
+      parallel `gen2..gen5`/`gen_*` generators, `solver.js`+`solver2.js`, `skins.js`+`skins2.js`, stacked HANDOVERs, etc.
+      Consolidate into FEW parameterized tools (one showcase builder, one generator entry point), delete dead experiments,
+      fold what's still useful into cli.js/program.js/builder.js. Self-tests must stay green at every step; show the
+      surviving surface in one HTML index. Do it as its own session with a survey-first pass (what each file does, who
+      imports it) — no blind deletion.
+- [ ] **GOD BUILDER: continue on this path, ONE last time — must become incredible** (Mario): push the hierarchical
+      families + admits-graph + difficulty budget to its full form. Candidates: richer/deeper family tree (sub-families,
+      more modifier semantics: keys vs selectors vs post-conditions), per-family CURRICULUM sampling for the corpus
+      assembler, difficulty calibration against real solver pass-rates, feed `admits` into program.js composed-chain
+      sampling (same graph for the program-first corpus), per-slot typed arguments (unify the PAN-176 slot system into
+      builder.js), family coverage metrics on generated corpora.
+- [ ] **GRAPH INSPECTABLE BY MARIO — interactive HTML explorer** (Mario, explicit): the family/admits graph must be
+      VISUALIZABLE and inspectable, not just code. An HTML view (extend `build_builder_showcase.js` or a dedicated
+      `build_graph_explorer.js`): nodes = families (and their functions), edges = admits, click a family → its functions
+      with paired difficulties + bands + blurbs, click an edge → why it composes, sample-a-menu button per difficulty
+      target. Regenerate on every taxonomy change (HTML rule).
+
 ## 🔜 Open — Mario backlog 2026-06-24 (CINECA down → model items blocked)
+- [ ] **PAN-176 Super-suggester + full dataset schema** — make the DSL effectively "change itself" per task by exposing
+      only a tiny typed compatible slice each time: function schemas + typed argument slots (`selector`, `predicate`,
+      `subobject`, `relation`, `transform`, `layout`, `output_policy`) + compatibility/difficulty/augmentation DB.
+      Dataset target fields: `unique_code`, `difficulty`, `dsl_suggestions`, `rule_description`, `generator_model_thinking`,
+      `dsl_representation`, `object_level_json`, `grid_json`; future planned field: Python function of compiled DSL.
+      Also plan visual step-by-step DSL unroll / 2D CoT for reasoning training and possible GRPO.
+- [ ] **PAN-124/PAN-166 variation contracts for base-library examples** — v6 now samples more distinct seeds and records
+      `difficulty`/`depth`/`language_description`/`generator_code`, but an adversarial audit still finds deterministic
+      library entries whose OUT is identical across examples (`path_follow`, `path_two_walkers`, some grid-completion
+      basics). Do this properly, not with fake noise: add template-level variable/non-variable axes, route variants that
+      remain single unambiguous paths, and cheap near-duplicate/too-large-example metrics before promotion.
 - [ ] **PAN-164 Seeded generation (NVARC/BARC shape)** — `seeded.js` + `generate-seeded` SHIPPED (LLM writes a DSL generator from a REAL
       ARC task + its human description in `DATASET/descriptions/`). **Validate on Qwen when CINECA returns.** Next: skill-mix, consistency filter, grow descriptions 245→1000.
 - [ ] **PAN-165 Swap model → Qwen3.6-35B-A3B** (CINECA down): confirm HF repo id, download to scratch/large, point debug_qwen.sbatch MODEL, re-run generate-seeded.
-- [ ] **PAN-167 IQ-puzzle descriptions → seed** — author IQ-rule descriptions (Raven/analogy/series/odd/fold) in the DATASET/descriptions format, feed via generate-seeded. Start: `DESIGN/iq-tests-to-dsl.md`.
+- [ ] **PAN-167 IQ-puzzle descriptions → seed** — seed pack expanded **6 → 17** in `DATASET/descriptions/iq/` and loader-verified.
+      Next: feed via `generate-seeded` on Qwen when CINECA is back; remember `DATASET/` is gitignored and must be synced to CINECA.
 - [ ] **PAN-166 Easier DSL for agents** (toward Python-like / sandboxed Python = the 'later' half of the hybrid decision).
+- [ ] **Procedural-NFT generator v2** — promote the new showcase composer into a reusable generator/CLI, with a much larger
+      figure/skin/layout/program bank, per-recipe yield metrics, depth-balanced sampling, and adversarial checks that the rule signal
+      is causally necessary (no decorative markers, no position-only shortcuts, no copied held-out answer).
+- [ ] **Engine-derived 2D-CoT trace compiler** — the new operation-template gallery covers the visual grammar, but the real
+      target is command snapshots from `engine.js`: selector evidence, pre/post objects, dependency DAG, white working-memory
+      overlays, and one trace template per DSL operation family without hand-authored showcase snippets.
 
 ## 🔜 Open — larger tracked efforts (each is its own multi-session piece, NOT quick wins; on Linear)
 - [ ] **Engine `shape NAME pattern P|P|P` custom-object def** (`def A … / spawn A`, Mario) — define an arbitrary object/SKIN
@@ -34,12 +71,127 @@ Running list. Newest priorities on top. Done items move to the bottom.
 - [x] Objectives/tokenizer export — 2026-06-22 (`cli.js export-objectives`: arc_pair/next_frame/inverse_dynamics/object_aux).
 
 ## 🎨 Content — done
-- [x] Template library past target: **61 scene templates** (was 39) + **29 program-first families** in `gen_hard.js` across all priors.
+- [x] Template library past target: **61 scene templates** (was 39) + **36 program-first families** in `gen_hard.js` across all priors.
 - [x] Qwen novelty prompt (PAN-116) — `generate-llm` rewards mixing + a twist while the engine guard keeps coherence.
 - [x] More physics: **magnets** (`magnet_dock`), maze pathfinding (`maze_solve`), pointer beams (`beam_video`) added to the
       foundational tier. (Still possible later: pile-toppling/collapse, chain reactions, fluid + floating objects.)
 
 ## ✅ Done
+- [x] (2026-06-25) **Showcase v7.5 call-ready synthesis page (Codex).** Added `build_showcase_v7_5.js`, which regenerates
+      the dependency artifacts and writes `out/showcase_v7_5.html` + `.json`. The page has 6 clear sections: expanded
+      shape/skin vocabulary atlas, 20 balanced procedural-NFT samples, all 13 white 2D-CoT operation template traces,
+      12 corrected auto-depth samples, 18 materialized v7 puzzle highlights, and the top 24 adversarial audit warnings.
+      It intentionally separates validated visual puzzles from red plan/suggestion records. Current run: 80 procedural
+      cards balanced 16/recipe with 0 generation errors, 13 CoT trace families covering 31 DSL verbs, 100 auto-depth
+      cards with 0 bad, v7 with 8 intentional red unmaterialized-suggestion audits, and 234 audit rows with 110 warnings.
+      `build_procedural_nft_showcase.js` now exports `main()` so v7.5 is self-contained. Verified atlas/trace render and `npm test` green.
+- [x] (2026-06-25) **Shape/skin expansion + compositional-depth audit + white 2D-CoT operation gallery (Codex + adversarial subagents).**
+      Added 11 ARC-legible shapes to the engine/browser/shared bank (`Ushape`, `Cshape`, `Hshape`, `Zshape`, `stair`, `arrow`,
+      `key`, `fork`, `bridge`, plus shared `frame`/`ring`) and expanded skins with true `rim`, inner frames, targets,
+      quadrants, sash/barcode/teeth/islands, directional ports, and endpoints. Kept old `border` for compatibility but no
+      longer treats it as the only rim-like skin. The procedural-NFT composer now samples from the shared expanded bank and
+      relation-gate tasks draw a visible anchor zone, so the relation is not hidden arithmetic. New `out/procedural_nft_showcase.html`
+      run remains balanced: 80 cards, 16 per recipe, 0 generation errors, stricter audit drops 6 weak attempts.
+      Fixed depth metadata theater in `build_auto_depth_showcase.js`: public `meta.depth` is now the requested tier, while
+      hand-authored family complexity is preserved as `generator_steps`; added `depth_proof` caveats and a within-card
+      duplicate-pair gate. New `build_depth_composition_audit.js` writes `out/depth_composition_audit.html/.json` and audits
+      234 showcase cards for duplicate pairs, global output reuse, high output-mask IoU, tiny effects, mostly-copy cases,
+      too-large grids, and non-visual plan records (current run: 110 warnings, intentionally adversarial). Fixed v7 integrity:
+      unmaterialized DSL suggestion records now stay red as `not-validated-scene` instead of being rewritten green.
+      Added `build_cot_operation_showcase.js`, producing `out/cot_operation_showcase.html/.json`: 13 white-trace operation
+      families covering 31 DSL verbs (selection/remove/extract, move/copy, geometry transforms, recolor/dispatch/classify,
+      arrange, boolean combine/overlay, counting, fill/crop, bind/apply analogy, progress, turtle/drive, physics causality,
+      whole-grid completion). Verified new shape constructors, rebuilt procedural/auto/v7/audit/CoT pages, and `npm test` green.
+- [x] (2026-06-25) **Compass program bugfix + procedural-NFT diversity showcase (Codex).** Repaired
+      `compass_move_program`: direction markers are now embedded inside each object, move with the object, start positions are
+      random/collision-checked, and there are no orphan instruction dots or left-to-right ordering shortcuts. Verified 300 seeds,
+      rebuilt `out/auto_depth_showcase.html` (100 cards / 0 bad) and `out/showcase_v7.html` (54 cards / 0 failed audits).
+      Added `build_procedural_nft_showcase.js`, a first trait-composition generator closer to procedural NFT generation:
+      random masks, seven skins, embedded symbols, relation gates, macro rewrites, object movement programs, and recursive growth.
+      It writes `out/procedural_nft_showcase.html`, `.json`, and `.jsonl` with 80 balanced cards (16 per recipe), deterministic
+      audits, and `drops_by_recipe`; fixed the macro-rewrite allocation bug that previously hid 198 generation failures behind retries.
+      Final run: 80 cards, 0 generation errors, 2 audit drops. `npm test` green.
+- [x] (2026-06-25) **Showcase v7 rule-encoding + ARC-reference package (Codex + adversarial subagents).** Added
+      `build_showcase_v7.js` as a comprehensive level check with 8 explicit sections / 54 cards: real ARC-AGI-2 training references,
+      a new rule-encoding mini-program package, 4 Codex/subagent-designed materialized puzzles, a 16-card
+      non-cherry-picked procedural `gen_hard` batch, 10 new program-first templates, solver-process / dynamic-bias traces,
+      5 solver-trace prototype GIFs, and DSL prompt/suggestion records. New v7 artifacts:
+      `out/showcase_v7.html` + `.json`, with generated GIFs for encoded color programs, encoded tiling programs,
+      newly designed LLM-style puzzles, procedural samples, and visible trace GIFs where selection/erase/transform/place are animated.
+      Trace selection now uses a trace-only white palette overlay rather than yellow. Added the first
+      rule-encoding tasks where the grid itself contains a legend/program to execute, plus hard gates for copied test
+      answers, weak output variety, missing grids, metadata lies, trace presence, and training-only ARC reference use.
+      Follow-up patch promoted the traffic-light prior into templates (`traffic_light_lanes`, `traffic_turn_signal`,
+      `pedestrian_crosswalk`, `conveyor_color_gate`), added collision/stacking gravity, symbol/motion program templates,
+      and three more fractal/nature recursion templates. It also fixed `skin_core_dispatch` by forbidding invisible
+      core markers and invisible red/blue transforms, and hardened `gravity_drop` lane spacing.
+      Follow-up auto-depth run added `build_auto_depth_showcase.js` and generated
+      `out/auto_depth_showcase.html`, `out/auto_depth_showcase.json`, and `out/auto_depth_tasks.jsonl`:
+      exactly 100 automatic tasks split 50 depth-1 / 30 depth-2 / 20 depth-3. The sampler is round-robin over
+      depth buckets, rejects duplicate/trivial/copy/oversize tasks, and the resulting run spans 28 depth-1 families,
+      all 7 depth-2 families, and all 8 depth-3 families. `gravity_stack_collision` now uses an actual settle loop:
+      every falling object drops until any occupied cell below it collides with floor or any already-settled object,
+      so wide objects and stacks interact with all objects beneath their footprint.
+      The materialized "LLM/Subagent-Designed" section is newly designed by Codex/subagents and then procedurally
+      materialized for correctness; the separate "DSL Suggestion Records" section is deliberately prompt/suggestion
+      substrate and not a live model output. Verified `node build_showcase_v7.js`, `node build_arc_agi2_reference_audit.js`,
+      `node build_super_suggester_visual_showcase.js`, `node super_suggester.js --self-test`, and `npm test` inside
+      `GRIDVID/`. Honest caveat: this is still not the final DSL compiler/database that dynamically rewrites itself;
+      it is the first visual/materialized package for that direction.
+- [x] (2026-06-25) **PAN-176 first super-suggester prototype (Codex + critic/worker agents).** Added
+      `super_suggester.js`, `build_super_suggester_showcase.js`, and CLI command `super-suggest`. The prototype emits
+      dataset-shaped typed suggestion records: `unique_code`, `difficulty`, `dsl_suggestions`, `rule_description`,
+      `generator_model_thinking`, `dsl_representation`, `object_level_json_representation`, `json_grid_representation`,
+      and a planned-null `python_compiled_dsl_function`. It includes typed slots (`selector`, `predicate`,
+      `subobject`, `relation`, `transform`, `layout`, `output_policy`), compatibility / incompatibility edges,
+      task-vs-example augmentation contracts, skin/layout hints, pseudo-DSL plans, and adversarial checks. Generated
+      `out/super_suggester_showcase.html` + `.json`. Also fixed real CLI bugs found by the critic: `--dynamic`,
+      `--temp`, and `--maxtok` are now parsed, and parallel `generate-dataset --workers` now forwards `static`,
+      `hard`, and `maxAttempts`. Verified `node super_suggester.js --self-test`, `node build_super_suggester_showcase.js`,
+      `node cli.js super-suggest`, `node cli.js generate-dataset --workers 2 --static --hard`, and `npm test`.
+      Follow-up adversarial pass fixed the first prototype's fake knobs: `mode` and `difficulty` now constrain generated
+      records, `depth` is saved, dynamic/static rule-salad compositions are blocked, exposed type values are a genuinely
+      small slice rather than the whole type DB, compatibility edges are split/validated, and object/grid representations
+      are explicitly marked `not_instantiated` until a real compiler emits them.
+      Added and then adversarially rebuilt `build_super_suggester_visual_showcase.js` so the suggester leaves
+      human-inspectable puzzle figures too: `out/super_suggester_visual_showcase.html` plus 8 v2 GIF cards for
+      subobject dispatch, relation selection, analogy, support collapse, motif continuation, XOR, recursive fractal
+      expansion, and future-state/path analogy. The v2 builder now hard-fails exact copied test answers, weak train
+      variety, marker/shape confounds, invisible marker-selected transforms, and clipped fractal/scale outputs. Also
+      added `build_arc_agi2_reference_audit.js`, rendering 20 local ARC-AGI-2 training tasks into
+      `out/arc_agi2_reference_audit.html` with variation/size/DSL-reference notes, so synthetic cards are compared
+      against real task texture rather than judged in isolation.
+      Honest caveat: this is still a typed planning/suggestion layer, not a compiler that turns every plan into a
+      validated GRIDVID scene or 2D-CoT trace.
+- [x] (2026-06-25) **Showcase v6 second corrective pass after Mario review (Codex).** Rebuilt
+      `out/showcase_v6.html` / `.jsonl` as **122 cards** with all cards carrying `difficulty`, `depth`,
+      `language_description`, and code/DSL provenance. Repaired `extract_crop`, `count_holed_objects`, and every
+      path-library template touched by the review so paths are explicit single-line routes instead of ambiguous random
+      walks. Upgraded `inside_outside` and `collapse_support` in `gen_hard.js`; added automatic families
+      `greek_key_frieze`, `empty_structure_complete`, and `skin_core_dispatch`; curated the 20 no-LLM generator samples
+      so v6 visibly includes fractals, Greek-key patterns, maze/pathfinding, IQ boolean XOR, skins/subobjects,
+      structure-style gravity, shadow/pointing, topology, and shape transforms. Verified `node build_showcase_v6.js`,
+      `node cli.js self-test`, 50-seed sweeps for repaired scenes, and 50-seed sweeps for the key automatic families.
+- [x] (2026-06-24) **Showcase v6 corrective pass + promotions (Codex).** Regenerated `out/showcase_v6.html`
+      + `out/showcase_v6.jsonl` as **18 vetted cards** after Mario review: pruned the nonsense/constant/copyable families
+      (Bongard, part-whole, nested-skin roles, core-then-mirror, xor-then-count), repaired the retained IQ/object/compositional
+      families, and added variation contracts to every v6 card. Promoted `iq_boolean_xor` and `skin_zoo_select_checker`
+      into official `gen_hard.js` families; fixed `scenes/library/figure_xor.txt` so XOR inherits source-A colour instead
+      of emitting a magic colour. Browser QA: 18 cards / 18 images / 0 broken; `node cli.js self-test` green.
+- [x] (2026-06-24) **ARC-style render grid (Codex).** `gif.js` previews now draw a 1px grey cell grid by default
+      (`grid:false` opt-out), so v6 and future galleries look closer to real ARC-AGI/ARC-AGI-2 task visuals.
+      Verified by rebuilding v6, `node cli.js self-test`, browser load, and pixel-decoding a sample GIF boundary.
+- [x] (2026-06-24) **Expanded showcase v6 curriculum page (Codex + Faraday).** `out/showcase_v6.html` now has **5 clear
+      sections / 122 cards**: 18 vetted v6 candidates, 62 existing basic DSL library templates, 12 foundational physics/fluid
+      tasks, 10 fresh non-basic compositional tasks, and 20 no-LLM `gen_hard.js` samples. Added two basic predicate templates:
+      `extract_wide_objects` (`where orientation is wide`) and `count_holed_objects` (`where loop` + tally). Also improved
+      proposer hierarchy/coherence bookkeeping in `cli.js` (dynamic library count; whole-grid detection includes
+      `grid_complete`, `unfold`, `crop`). Verified `node build_showcase_v6.js`, `node cli.js self-test`, and HTML/JSONL counts.
+- [x] (2026-06-24) **PAN-167 IQ seed-pack expansion (Codex).** Added 11 abstract, non-copyrighted IQ rule-type descriptions in
+      `DATASET/descriptions/iq/`: attribute binding, boolean mask algebra, Bongard classification, distribution-of-three,
+      embedded-figure find, matrix feature progression, part-whole assembly, section profile, symmetry completion,
+      topology/loop count, and transitive analogy chains. Loader check: `loadSeeds({iqOnly:true})` sees **17** IQ seeds;
+      `node cli.js self-test` green; `generate-seeded --stub` still runs end-to-end (dedups expected because the stub scene is constant).
 - [x] (2026-06-24) **Showcase-v5 feedback fixes + compositionality + v5.5 (Mario).** Fixed: `holed_take_largest` & `largest_to_marker`
       "largest" is now STRICTLY UNIQUE by construction (no ties); `replicant` undoable bug (asymmetric shapes + visible-transform check).
       New `collapse_support` (compositional physics: remove support → structure falls). New **showcase v5.5** `out/showcase_v5_5.html` =

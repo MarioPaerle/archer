@@ -24,7 +24,43 @@ function growUniqueMax(specs) { let g = 0; while (!strictMax(specs) && g++ < 16)
 const SOLID = ["square", "disc", "plus", "Lshape", "triangle"], HOLED = ["frame", "ring"];
 const shapeCells = (kind, s) => kind === "frame" ? E.buildShape("frame", [s, s]) : E.buildShape(kind, [s]);
 const flipHcells = cells => { const [, w] = bbox(cells); return cells.map(([r, c]) => [r, w - 1 - c]); };
+const rot90cells = cells => E.normalize(cells.map(([r, c]) => [c, -r]));
+const rot180cells = cells => rot90cells(rot90cells(cells));
+const sameCells = (a, b) => {
+  const A = E.normalize(a).map(([r, c]) => r + "," + c).sort().join(";");
+  const B = E.normalize(b).map(([r, c]) => r + "," + c).sort().join(";");
+  return A === B;
+};
 const outlineCells = (h, w) => { const o = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || c === 0 || r === h - 1 || c === w - 1) o.push([r, c]); return o; };
+const cellMask = rows => { const o = []; for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c]) o.push([r, c]); return o; };
+const cellKeySet = cells => new Set(cells.map(([r, c]) => r + "," + c));
+const fromKeySet = set => [...set].map(s => s.split(",").map(Number));
+function xorCells(a, b) {
+  const A = cellKeySet(E.normalize(a)), B = cellKeySet(E.normalize(b)), out = new Set();
+  for (const k of A) if (!B.has(k)) out.add(k);
+  for (const k of B) if (!A.has(k)) out.add(k);
+  return E.normalize(fromKeySet(out));
+}
+const XOR_MOTIFS = [
+  cellMask([[0, 1, 0, 0, 0], [1, 1, 1, 0, 0], [0, 1, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]),
+  cellMask([[1, 1, 1, 1, 1], [1, 0, 0, 0, 1], [1, 0, 0, 0, 1], [1, 0, 0, 0, 1], [1, 1, 1, 1, 1]]),
+  cellMask([[0, 0, 1, 0, 0], [0, 1, 1, 1, 0], [1, 1, 1, 1, 1], [0, 1, 1, 1, 0], [0, 0, 1, 0, 0]]),
+  cellMask([[1, 0, 0, 0, 0], [1, 1, 0, 0, 0], [1, 1, 1, 0, 0], [1, 1, 1, 1, 0], [1, 1, 1, 1, 1]]),
+  cellMask([[1, 1, 1, 0, 0], [0, 1, 0, 0, 0], [0, 1, 0, 0, 0], [0, 1, 0, 0, 0], [0, 1, 0, 0, 0]]),
+  cellMask([[1, 0, 1, 0, 1], [0, 1, 1, 1, 0], [1, 1, 1, 1, 1], [0, 1, 1, 1, 0], [1, 0, 1, 0, 1]]),
+];
+function variedXorPair(rng) {
+  const key = cells => E.normalize(cells).map(([r, c]) => r + ":" + c).join("|");
+  const area = cells => cells.length;
+  let a = E.normalize(pick(rng, 1, XOR_MOTIFS)[0]), b = E.normalize(pick(rng, 1, XOR_MOTIFS)[0]), x = xorCells(a, b);
+  let guard = 0;
+  while ((key(a) === key(b) || area(x) < 4 || area(x) === area(a) || area(x) === area(b)) && guard++ < 40) {
+    a = E.normalize(pick(rng, 1, XOR_MOTIFS)[0]);
+    b = E.normalize(pick(rng, 1, XOR_MOTIFS)[0]);
+    x = xorCells(a, b);
+  }
+  return [a, b, x];
+}
 
 // ---- SHAPE vocab + SKINS — shared module so gen_hard AND gen_count skin the same way (Mario: skinnable everywhere). ----
 const { SHAPES_ALL, SKINS, skinnedCells, pickSkin } = require("./skins.js");
@@ -128,21 +164,21 @@ const FAMILIES = {
       const out = blank(3, 3); for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out[r][c] = win;   // small human-shaped answer block (PAN-158)
       return { in: IN, out }; } },
 
-  inside_outside: { prior: "topology", steps: 2, rule: "recolour the shapes INSIDE the frame green and the shapes OUTSIDE it red; the frame stays", concept: ["containment", "inside-outside", "topology"],
-    make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20), gap = 1;
-      const fr = Math.max(8, Math.floor(Math.min(H, W) * 0.55)), fc = fr;
+  inside_outside: { prior: "topology", steps: 3, rule: "recolour all objects inside the frame green and all outside objects red; preserve each object's shape and the frame", concept: ["containment", "inside-outside", "topology", "multi-object"],
+    make(rng) { const H = rng.int(20, 24), W = rng.int(20, 24), gap = 1;
+      const fr = Math.max(10, Math.floor(Math.min(H, W) * 0.62)), fc = fr;
       const fR = rng.int(0, H - fr - 1), fC = rng.int(0, W - fc - 1);
       const frameCells = E.buildShape("frame", [fr, fc]), occ = blank(H, W);
       const mark = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) occ[rr][cc] = 1; } };
       const free = (cells, r, c) => { for (const [dr, dc] of cells) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false; for (let a = -gap; a <= gap; a++) for (let b = -gap; b <= gap; b++) { const nr = rr + a, nc = cc + b; if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false; } } return true; };
       mark(frameCells, fR, fC);
       const objs = [{ cells: frameCells, r: fR, c: fC, color: 5, frame: true }];
-      const tryPlace = inside => { const s = rng.int(1, 2), cells = shapeCells("square", s);
+      const tryPlace = inside => { const s = rng.int(2, 3), cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "triangle"])[0], s), [bh, bw] = bbox(cells);
         for (let t = 0; t < 120; t++) { let r, c;
-          if (inside) { r = fR + 1 + rng.int(0, Math.max(0, fr - 2 - s)); c = fC + 1 + rng.int(0, Math.max(0, fc - 2 - s)); }
-          else { r = rng.int(0, H - s - 1); c = rng.int(0, W - s - 1); if (r >= fR - 1 && r <= fR + fr && c >= fC - 1 && c <= fC + fc) continue; }
+          if (inside) { r = fR + 1 + rng.int(0, Math.max(0, fr - 2 - bh)); c = fC + 1 + rng.int(0, Math.max(0, fc - 2 - bw)); }
+          else { r = rng.int(0, H - bh - 1); c = rng.int(0, W - bw - 1); if (r >= fR - 1 && r <= fR + fr && c >= fC - 1 && c <= fC + fc) continue; }
           if (free(cells, r, c)) { mark(cells, r, c); objs.push({ cells, r, c, color: [3, 4, 6, 7, 8][rng.int(0, 4)], inside }); return; } } };
-      const nIn = rng.int(1, 2), nOut = rng.int(1, 3); for (let i = 0; i < nIn; i++) tryPlace(true); for (let i = 0; i < nOut; i++) tryPlace(false);
+      const nIn = rng.int(2, 3), nOut = rng.int(2, 4); for (let i = 0; i < nIn; i++) tryPlace(true); for (let i = 0; i < nOut; i++) tryPlace(false);
       const IN = render(H, W, objs);
       const out = objs.map(o => o.frame ? o : ({ ...o, color: o.inside ? 3 : 2 }));
       return { in: IN, out: render(H, W, out) }; } },
@@ -180,6 +216,23 @@ const FAMILIES = {
       const IN = render(H, W, P.map(o => ({ ...o, cells: o.shape })));
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, cells: flipHcells(o.shape) }))) }; } },
 
+  iq_boolean_xor: { prior: "iq/boolean", steps: 2, rule: "combine the two top-left-aligned source figures with XOR; cells present in exactly one source remain, in source A's colour", concept: ["iq", "boolean", "xor", "figure-algebra"],
+    variation: { vary: ["source mask A", "source mask B", "source A colour", "source B colour"], invariant: ["operation = xor", "source masks are top-left aligned", "answer colour is inherited from source A"] },
+    make(rng) { const H = 11, W = 23, [A, B0, X] = variedXorPair(rng), colA = pick(rng, 1, [2, 3, 4, 6, 8])[0], colB = pick(rng, 1, [1, 5, 7, 9].filter(c => c !== colA))[0];
+      const IN = blank(H, W), out = blank(7, 7);
+      stamp(IN, A, 2, 2, colA); stamp(IN, B0, 2, 15, colB); for (let r = 0; r < H; r++) IN[r][11] = 5;
+      stamp(out, X, 1, 1, colA);
+      return { in: IN, out: C.cropToContent(out) }; } },
+
+  skin_zoo_select_checker: { prior: "object/skin", steps: 2, rule: "among varied skinned objects, keep only the object with the checker internal pattern", concept: ["skin", "subobject", "selection", "checker"],
+    variation: { vary: ["object shape", "skin distractors", "body colour", "accent colour", "layout"], invariant: ["target predicate = checker skin", "output keeps only the checker object"] },
+    make(rng) { const H = 28, W = 32, body = pick(rng, 1, [1, 5, 8])[0], accent = pick(rng, 1, [2, 3, 4, 6, 7, 9].filter(c => c !== body))[0];
+      const skins = shuffle(rng, ["core", "border", "cross", "stripe", "checker", "diag", "spots", "corner", "split"]).slice(0, 5);
+      if (!skins.includes("checker")) skins[0] = "checker";
+      const specs = skins.map(sk => ({ cells: shapeCells(pick(rng, 1, SHAPES_ALL)[0], rng.int(3, 4)), color: body, skin: sk, accent, target: sk === "checker" }));
+      const P = placeRoster(rng, H, W, specs);
+      return { in: renderSkinned(H, W, P), out: renderSkinned(H, W, P.filter(o => o.target)) }; } },
+
   // ---- PAN-157 breadth batch (2026-06-23): +11 families across all priors + a foundational physics bridge ----
   recolor_by_size_class: { prior: "number/object", steps: 2, rule: "recolour every small shape red and every large shape blue, by cell-count", concept: ["size", "threshold", "classification"],
     make(rng) { const H = rng.int(16, 20), W = rng.int(16, 20);
@@ -190,11 +243,16 @@ const FAMILIES = {
       const P = placeRoster(rng, H, W, specs), IN = render(H, W, P);
       return { in: IN, out: render(H, W, P.map(o => ({ ...o, color: o.big ? 1 : 2 }))) }; } },
 
-  gravity_drop: { prior: "object/physics", steps: 2, rule: "every shape falls straight down until it rests on the floor", concept: ["gravity", "physics", "object-permanence"],
-    make(rng) { const K = rng.int(3, 4), H = rng.int(13, 17), W = rng.int(16, 20), bandW = Math.floor(W / K), gap = 1;
-      const cols = pick(rng, K, [2, 3, 4, 6, 8]), specs = [];   // distinct colours per band → adjacency on the floor never merges
-      for (let i = 0; i < K; i++) { const cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "triangle"])[0], rng.int(2, 3)), [bh, bw] = bbox(cells);
-        const c = i * bandW + rng.int(0, Math.max(0, bandW - bw - gap)), r = rng.int(0, Math.max(0, H - bh - 3)); specs.push({ cells, color: cols[i], r, c, bh }); }   // gap kept on the band's right edge
+  gravity_drop: { prior: "object/physics", steps: 2, rule: "every shape falls straight down until it rests on the floor, without merging into neighbours", concept: ["gravity", "physics", "object-permanence", "collision"],
+    make(rng) { const K = rng.int(3, 4), H = rng.int(14, 18), W = rng.int(20, 24), laneW = Math.floor(W / K);
+      const cols = pick(rng, K, [2, 3, 4, 6, 8]), specs = [];
+      for (let i = 0; i < K; i++) {
+        const cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "notch"])[0], rng.int(2, 3)), [bh, bw] = bbox(cells);
+        const laneC = i * laneW, maxC = Math.min(W - bw - 1, laneC + laneW - bw - 2);
+        const c = Math.max(0, laneC + 1 + rng.int(0, Math.max(0, maxC - laneC - 1)));
+        const r = rng.int(0, Math.max(0, H - bh - 5));
+        specs.push({ cells, color: cols[i], r, c, bh });
+      }
       const IN = render(H, W, specs);
       return { in: IN, out: render(H, W, specs.map(o => ({ ...o, r: H - o.bh }))) }; } },
 
@@ -307,7 +365,7 @@ const FAMILIES = {
       const g = blank(H, W); for (let i = 0; i < nUp; i++) g[i * 2][0] = 5; return { in: IN, out: C.cropToContent(g) }; } },   // small human-shaped grey tally
 
   maze_path: { prior: "geometry", steps: 2, rule: "trace the shortest path from the green start to the red goal through the maze", concept: ["maze", "pathfinding", "spatial", "path"],
-    make(rng) { const sz = 15, m = M.genMaze(rng, sz, sz, M.ALGOS[rng.int(0, M.ALGOS.length - 1)]);   // algorithm varies per example → learn pathfinding, not one maze texture
+    make(rng) { const sz = pick(rng, 1, [13, 15, 17])[0], m = M.genMaze(rng, sz, sz, M.ALGOS[rng.int(0, M.ALGOS.length - 1)]);   // size + algorithm vary per example → learn pathfinding, not one maze texture
       return { in: M.renderMaze(m, 0), out: M.renderMaze(m, Infinity) }; } },
 
   cast_shadow: { prior: "geometry", steps: 2, rule: "the light casts a shadow behind every object (the cells the light cannot reach)", concept: ["light", "shadow", "occlusion", "optics"],
@@ -383,14 +441,215 @@ const FAMILIES = {
       const colorize = g => g.map(row => row.map(x => x ? color : 0));
       return { in: colorize(M), out: it2 }; } },   // IN 3×3 motif → OUT 9×9 motif-of-motif (continue the fractal)
 
+  greek_key_frieze: { prior: "geometry/pattern", steps: 3, rule: "continue the ornamental border by repeating the learned Greek-key motif across the empty slots", concept: ["pattern", "frieze", "continuation", "ancient-greek", "periodicity"],
+    variation: { vary: ["motif family", "motif colour", "number of visible repeats"], invariant: ["same motif repeats left-to-right", "blank slots are completed by the motif", "motif geometry is preserved"] },
+    make(rng) {
+      const motifs = [
+        [[1,1,1,1],[1,0,0,0],[1,1,1,0]],
+        [[1,1,0,0],[0,1,0,0],[0,1,1,1]],
+        [[1,0,1,1],[1,1,1,0],[1,1,0,1]],
+        [[1,1,1,0],[0,0,1,0],[0,1,1,1]],
+      ];
+      const M0 = motifs[rng.int(0, motifs.length - 1)], M1 = rng.int(0, 1) ? M0 : M0.map(row => row.slice().reverse());
+      const col = pick(rng, 1, [2, 3, 4, 6, 8])[0], H = 7, W = 19, IN = blank(H, W), out = blank(H, W), shown = rng.int(2, 3);
+      for (let k = 0; k < 4; k++) for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) if (M1[r][c]) out[2 + r][1 + k * 4 + c] = col;
+      for (let k = 0; k < shown; k++) for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) if (M1[r][c]) IN[2 + r][1 + k * 4 + c] = col;
+      for (let c = 0; c < W; c++) { IN[0][c] = 5; IN[H - 1][c] = 5; out[0][c] = 5; out[H - 1][c] = 5; }
+      return { in: IN, out };
+    } },
+
+  empty_structure_complete: { prior: "geometry/topology", steps: 3, rule: "complete the missing bars of an empty scaffold so every open rectangle becomes a closed frame", concept: ["empty-structure", "skeleton", "completion", "topology"],
+    variation: { vary: ["scaffold width", "scaffold height", "missing side positions", "line colour"], invariant: ["objects are empty frames, not filled blocks", "missing frame bars are restored", "interior stays empty"] },
+    make(rng) {
+      const H = 16, W = 22, col = pick(rng, 1, [2, 3, 4, 6, 8])[0], out = blank(H, W), IN = blank(H, W);
+      const boxes = [
+        { r: 2, c: 2, h: rng.int(4, 5), w: rng.int(5, 7), miss: "right" },
+        { r: 2, c: 12, h: rng.int(4, 5), w: rng.int(5, 7), miss: "bottom" },
+        { r: 9, c: rng.int(5, 8), h: rng.int(4, 5), w: rng.int(7, 9), miss: "left" },
+      ];
+      const draw = (g, b, skip) => {
+        for (let c = b.c; c < b.c + b.w; c++) { if (skip !== "top") g[b.r][c] = col; if (skip !== "bottom") g[b.r + b.h - 1][c] = col; }
+        for (let r = b.r; r < b.r + b.h; r++) { if (skip !== "left") g[r][b.c] = col; if (skip !== "right") g[r][b.c + b.w - 1] = col; }
+      };
+      for (const b of boxes) { draw(out, b, null); draw(IN, b, b.miss); }
+      return { in: IN, out };
+    } },
+
+  skin_core_dispatch: { prior: "object/skin/dispatch", steps: 4, rule: "the internal core colour chooses the operation: red-core objects mirror, blue-core objects flip, other objects stay still", concept: ["subobject", "core", "dispatch", "compositionality", "skin"],
+    variation: { vary: ["outer shape", "core colour", "body colour", "layout"], invariant: ["red core = left-right mirror", "blue core = top-bottom flip", "non-red/non-blue core = unchanged", "skin/core remains visible"] },
+    make(rng) {
+      const H = 22, W = 26, body = pick(rng, 1, [5, 8, 9])[0], cores = shuffle(rng, [2, 1, 4, 6]).slice(0, 4);
+      const shapePool = ["notch", "bump", "triangle"];
+      const specs = cores.map(core => {
+        let shape = null;
+        for (let t = 0; t < 20 && !shape; t++) {
+          const cand = shapeCells(pick(rng, 1, shapePool)[0], 4);
+          const hasCore = skinnedCells(cand, "core", body, core).some(x => x[2] === core);
+          const hCore = skinnedCells(flipHcells(cand), "core", body, core).some(x => x[2] === core);
+          const vCore = skinnedCells(flipVcells(cand), "core", body, core).some(x => x[2] === core);
+          if (!hasCore || !hCore || !vCore) continue;
+          if (core === 2 && sameCells(cand, flipHcells(cand))) continue;
+          if (core === 1 && sameCells(cand, flipVcells(cand))) continue;
+          shape = cand;
+        }
+        if (!shape) throw new Error("skin_core_dispatch: no visible transform shape");
+        const [h, w] = bbox(shape);
+        return { cells: rectCells(h, w), shape, color: body, skin: "core", accent: core, core };
+      });
+      const P = placeRoster(rng, H, W, specs);
+      const tf = o => o.core === 2 ? flipHcells(o.shape) : o.core === 1 ? flipVcells(o.shape) : o.shape;
+      return {
+        in: renderSkinned(H, W, P.map(o => ({ ...o, cells: o.shape }))),
+        out: renderSkinned(H, W, P.map(o => ({ ...o, cells: tf(o) }))),
+      };
+    } },
+
+  traffic_light_lanes: { prior: "society/game/physics", steps: 3, rule: "cars in green-light lanes move forward; cars in red-light lanes stay stopped", concept: ["traffic-light", "social-prior", "motion", "conditional"],
+    make(rng) { const H = 15, W = 24, g = blank(H, W), out = blank(H, W);
+      const rows = [4, 10], lights = shuffle(rng, [3, 2]), step = rng.int(4, 6), cols = pick(rng, 2, [6, 7, 8, 9]);
+      for (let i = 0; i < 2; i++) { const r = rows[i]; for (let c = 1; c < W - 1; c++) { g[r][c] = 5; out[r][c] = 5; } g[r - 1][2] = lights[i]; out[r - 1][2] = lights[i]; }
+      rows.forEach((r, i) => { const car = [[0,0],[0,1],[1,0],[1,1],[1,2]], c = i ? rng.int(5, 10) : rng.int(9, 14), nc = c + (lights[i] === 3 ? step : 0); stamp(g, car, r - 2, c, cols[i]); stamp(out, car, r - 2, nc, cols[i]); });
+      return { in: g, out }; } },
+
+  traffic_turn_signal: { prior: "society/game/physics", steps: 4, rule: "at the crossing, only the car whose traffic signal is green turns into the open road; red-signal cars remain", concept: ["traffic-light", "turning", "intersection", "conditional-motion"],
+    make(rng) { const H = 17, W = 17, g = blank(H, W), out = blank(H, W);
+      for (let i = 1; i < 16; i++) { g[8][i] = 5; out[8][i] = 5; g[i][8] = 5; out[i][8] = 5; }
+      const verticalGreen = rng.int(0, 1) === 1, vLight = verticalGreen ? 3 : 2, hLight = verticalGreen ? 2 : 3;
+      g[2][6] = vLight; out[2][6] = vLight; g[10][2] = hLight; out[10][2] = hLight;
+      const car = [[0,0],[0,1],[1,0],[1,1]], cols = pick(rng, 2, [6, 7, 8, 9]);
+      const vCar = { r: rng.int(2, 4), c: 8, color: cols[0] }, hCar = { r: 8, c: rng.int(2, 4), color: cols[1] };
+      stamp(g, car, vCar.r, vCar.c, vCar.color); stamp(g, car, hCar.r, hCar.c, hCar.color);
+      stamp(out, car, verticalGreen ? rng.int(10, 12) : vCar.r, verticalGreen ? rng.int(10, 12) : vCar.c, vCar.color);
+      stamp(out, car, verticalGreen ? hCar.r : rng.int(10, 12), verticalGreen ? hCar.c : rng.int(9, 11), hCar.color);
+      return { in: g, out }; } },
+
+  pedestrian_crosswalk: { prior: "society/school/game", steps: 3, rule: "walkers cross only when their crosswalk signal is green; red-signal walkers wait", concept: ["crosswalk", "social-prior", "conditional-motion", "agents"],
+    make(rng) { const H = 14, W = 22, g = blank(H, W), out = blank(H, W), greenTop = rng.int(0, 1) === 1;
+      for (let c = 2; c < W - 2; c += 2) { g[6][c] = 5; g[7][c] = 5; out[6][c] = 5; out[7][c] = 5; }
+      const cols = pick(rng, 2, [6, 7, 8, 9]);
+      const walkers = [{ r: 2 + rng.int(0, 1), c: rng.int(3, 7), col: cols[0], sig: greenTop ? 3 : 2, dr: 6 }, { r: 10, c: rng.int(13, 18), col: cols[1], sig: greenTop ? 2 : 3, dr: -6 }];
+      for (const w of walkers) { g[w.r][w.c] = w.col; g[w.r + 1][w.c] = w.col; g[w.r][w.c - 2] = w.sig; out[w.r][w.c - 2] = w.sig; const rr = w.sig === 3 ? w.r + w.dr : w.r; out[rr][w.c] = w.col; out[rr + 1][w.c] = w.col; }
+      return { in: g, out }; } },
+
+  conveyor_color_gate: { prior: "game/physics", steps: 4, rule: "objects ride the conveyor only through the gate with the same colour; mismatched objects stop before the gate", concept: ["conveyor", "gate", "colour-match", "motion"],
+    make(rng) { const H = 12, W = 24, g = blank(H, W), out = blank(H, W), gate = pick(rng, 1, [2, 3, 6, 8])[0];
+      for (let c = 1; c < W - 1; c++) { g[6][c] = 5; out[6][c] = 5; } g[5][13] = gate; g[7][13] = gate; out[5][13] = gate; out[7][13] = gate;
+      const objs = [{ c: 3, color: gate }, { c: 7, color: pick(rng, 1, [2, 3, 6, 8].filter(c => c !== gate))[0] }];
+      for (const o of objs) { const cells = [[0,0],[0,1],[1,0],[1,1]], dest = o.color === gate ? o.c + 12 : 11; stamp(g, cells, 4, o.c, o.color); stamp(out, cells, 4, dest, o.color); }
+      return { in: g, out }; } },
+
+  gravity_stack_collision: { prior: "object/physics", steps: 4, rule: "every falling object drops until any part of it collides with the floor or with any already-settled object below it", concept: ["gravity", "collision", "stacking", "support"],
+    make(rng) { const H = 20, W = 22, floorR = 18, cols = pick(rng, 5, [2, 3, 6, 7, 8, 9]), g = blank(H, W), out = blank(H, W);
+      for (let c = 1; c < W - 1; c++) { g[floorR][c] = 5; out[floorR][c] = 5; }
+      const baseC = rng.int(5, 8), span = rng.int(3, 5);
+      const objs = [
+        { cells: rectCells(2, span + 1), r: rng.int(10, 12), c: baseC, color: cols[0] },
+        { cells: rectCells(2, span), r: rng.int(5, 7), c: baseC + rng.int(0, 1), color: cols[1] },
+        { cells: rectCells(2, 2), r: rng.int(1, 3), c: baseC + rng.int(1, Math.max(1, span - 1)), color: cols[2] },
+        { cells: rectCells(2, rng.int(2, 3)), r: rng.int(3, 8), c: rng.int(1, 3), color: cols[3] },
+        { cells: rectCells(1, rng.int(4, 6)), r: rng.int(1, 5), c: baseC + span + rng.int(3, 5), color: cols[4] },
+      ];
+      const occupied = blank(H, W);
+      for (let c = 1; c < W - 1; c++) occupied[floorR][c] = 1;
+      const canPlace = (o, rr) => o.cells.every(([dr, dc]) => {
+        const r = rr + dr, c = o.c + dc;
+        return r >= 0 && c >= 0 && r < H && c < W && !occupied[r][c];
+      });
+      const wouldHitBelow = (o, rr) => !canPlace(o, rr + 1);
+      const settled = [];
+      for (const o of objs) stamp(g, o.cells, o.r, o.c, o.color);
+      for (const o of objs.slice().sort((a, b) => (b.r + bbox(b.cells)[0]) - (a.r + bbox(a.cells)[0]))) {
+        let rr = o.r;
+        while (canPlace(o, rr + 1)) rr++;
+        if (!wouldHitBelow(o, rr)) throw new Error("gravity_stack_collision: no support collision");
+        for (const [dr, dc] of o.cells) occupied[rr + dr][o.c + dc] = 1;
+        settled.push({ ...o, r: rr });
+      }
+      return { in: g, out: render(H, W, settled.concat([{ cells: lineCells(W - 2, false), r: floorR, c: 1, color: 5 }])) }; } },
+
+  rotation_symbol_apply: { prior: "rule-encoding/geometry", steps: 4, rule: "the symbol beside each object encodes the transform: red means rotate 90 degrees, blue means mirror, green means rotate 180", concept: ["symbol", "rotation", "mirror", "program", "rule-encoding"],
+    make(rng) { const H = 18, W = 24, g = blank(H, W), out = blank(H, W), codes = shuffle(rng, [2, 1, 3]), cols = pick(rng, 3, [6, 7, 8, 9]);
+      codes.forEach((code, i) => { const shape = shapeCells(pick(rng, 1, ["Lshape", "notch", "bump"])[0], 4), r = 3 + i * 5, c = 4 + (i % 2) * 7; g[r][c - 2] = code; out[r][c - 2] = code; stamp(g, shape, r, c, cols[i]); const tf = code === 2 ? rot90cells(shape) : code === 1 ? flipHcells(shape) : rot180cells(shape); stamp(out, tf, r, c, cols[i]); });
+      return { in: g, out }; } },
+
+  compass_move_program: { prior: "rule-encoding/geometry", steps: 4, rule: "embedded compass marks encode object movement: up, right, down, left", concept: ["movement", "program", "compass", "object-motion", "rule-encoding"],
+    make(rng) { const H = 20, W = 26, g = blank(H, W), out = blank(H, W);
+      const dirs = shuffle(rng, [[-5,0,1],[0,6,2],[5,0,3],[0,-6,4]]).slice(0, 3);
+      const bodies = pick(rng, 3, [6, 7, 8, 9, 5]), shapePool = ["square", "notch", "bump", "triangle"];
+      const occIn = blank(H, W), occOut = blank(H, W);
+      const markCell = cells => {
+        const [h, w] = bbox(cells), cr = Math.floor(h / 2), cc = Math.floor(w / 2);
+        return cells.slice().sort((a, b) => Math.abs(a[0] - cr) + Math.abs(a[1] - cc) - (Math.abs(b[0] - cr) + Math.abs(b[1] - cc)))[0];
+      };
+      const free = (occ, cells, r, c) => cells.every(([dr, dc]) => {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= H || cc >= W) return false;
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+          const nr = rr + a, nc = cc + b;
+          if (nr >= 0 && nc >= 0 && nr < H && nc < W && occ[nr][nc]) return false;
+        }
+        return true;
+      });
+      const reserve = (occ, cells, r, c) => { for (const [dr, dc] of cells) occ[r + dr][c + dc] = 1; };
+      const drawMarked = (grid, o, r, c) => {
+        stamp(grid, o.cells, r, c, o.body);
+        grid[r + o.mark[0]][c + o.mark[1]] = o.code;
+      };
+      const objs = [];
+      for (let i = 0; i < dirs.length; i++) {
+        const [dr, dc, code] = dirs[i];
+        const cells = shapeCells(pick(rng, 1, shapePool)[0], rng.int(3, 4)), [h, w] = bbox(cells), mark = markCell(cells);
+        let placed = null;
+        for (let t = 0; t < 500 && !placed; t++) {
+          const r = rng.int(Math.max(0, -dr), Math.min(H - h - 1, H - h - 1 - dr));
+          const c = rng.int(Math.max(0, -dc), Math.min(W - w - 1, W - w - 1 - dc));
+          if (!free(occIn, cells, r, c)) continue;
+          if (!free(occOut, cells, r + dr, c + dc)) continue;
+          placed = { cells, mark, r, c, dr, dc, code, body: bodies[i] };
+          reserve(occIn, cells, r, c);
+          reserve(occOut, cells, r + dr, c + dc);
+        }
+        if (!placed) throw new Error("compass_move_program: placement failed");
+        objs.push(placed);
+      }
+      for (const o of objs) { drawMarked(g, o, o.r, o.c); drawMarked(out, o, o.r + o.dr, o.c + o.dc); }
+      return { in: g, out }; } },
+
+  fractal_quadrant_expand: { prior: "geometry/fractal", steps: 3, rule: "replace every coloured cell of a 2x2 seed with a coloured copy of the whole seed", concept: ["fractal", "recursion", "self-similarity", "expansion"],
+    make(rng) { const cols = shuffle(rng, [2, 3, 6, 8]), seed = [[cols[0], 0], [cols[1], cols[2]]], out = blank(4, 4);
+      if (rng.int(0, 1)) seed[0][1] = cols[3];
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) if (seed[r][c]) for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) if (seed[a][b]) out[r * 2 + a][c * 2 + b] = seed[r][c];
+      return { in: seed, out }; } },
+
+  fractal_branch_growth: { prior: "geometry/fractal/nature", steps: 4, rule: "grow a plant-like branch by replacing each branch tip with a smaller fork", concept: ["fractal", "tree", "nature-prior", "growth"],
+    make(rng) { const H = 13, W = 13, col = pick(rng, 1, [3, 6, 8, 9])[0], g = blank(H, W), out = blank(H, W), base = rng.int(5, 7), top = rng.int(6, 7), bottom = rng.int(10, 11);
+      for (let r = top + 1; r <= bottom; r++) { g[r][base] = col; out[r][base] = col; }
+      const spread = rng.int(1, 2);
+      g[top][base - spread] = col; g[top][base + spread] = col;
+      for (const [r, c] of [[top, base - spread], [top, base + spread]]) { out[r][c] = col; out[r - 1][c - 1] = col; out[r - 1][c + 1] = col; out[r - 2][c - 1] = col; out[r - 2][c + 1] = col; }
+      return { in: g, out }; } },
+
+  nested_frame_recursive: { prior: "geometry/fractal/topology", steps: 3, rule: "each frame grows an inner frame, preserving the hollow structure recursively", concept: ["fractal", "nested-frame", "topology", "recursion"],
+    make(rng) { const H = 13, W = 13, col = pick(rng, 1, [2, 3, 6, 8])[0], g = blank(H, W), out = blank(H, W), s = rng.int(8, 10), r0 = Math.floor((H - s) / 2), c0 = Math.floor((W - s) / 2);
+      const drawFrame = (grid, r, c, h, w) => { for (let x = c; x < c + w; x++) { grid[r][x] = col; grid[r + h - 1][x] = col; } for (let y = r; y < r + h; y++) { grid[y][c] = col; grid[y][c + w - 1] = col; } };
+      drawFrame(g, r0, c0, s, s); drawFrame(out, r0, c0, s, s); drawFrame(out, r0 + 2, c0 + 2, s - 4, s - 4);
+      return { in: g, out }; } },
+
   // ---- 2026-06-24 (Mario): COMPOSITIONAL physics — remove the support, the structure above collapses. ----
-  collapse_support: { prior: "object/physics", steps: 3, rule: "the grey support is removed and every object that was resting on it falls straight down to the floor", concept: ["composition", "support", "gravity", "removal", "causality"],
-    make(rng) { const H = rng.int(13, 17), W = rng.int(15, 19), sR = rng.int(Math.floor(H / 2), H - 4);
-      const support = { cells: lineCells(W - 2, false), r: sR, c: 1, color: 5 }, K = rng.int(2, 3), bandW = Math.floor((W - 2) / K), cols = pick(rng, K, [2, 3, 4, 6, 8]), objs = [];
-      for (let i = 0; i < K; i++) { const cells = shapeCells(pick(rng, 1, ["square", "plus", "Lshape", "triangle", "diamond"])[0], rng.int(2, 3)), [bh, bw] = bbox(cells);
-        const c = 1 + i * bandW + rng.int(0, Math.max(0, bandW - bw - 1)), r = sR - bh; objs.push({ cells, color: cols[i], r, c, bh }); }   // resting ON the support
-      const IN = render(H, W, [support, ...objs]);
-      return { in: IN, out: render(H, W, objs.map(o => ({ ...o, r: H - o.bh }))) }; } },   // support gone → all fall to the floor
+  collapse_support: { prior: "object/physics", steps: 4, rule: "remove the red keystone from a block structure; unsupported upper blocks collapse downward while grounded base blocks remain", concept: ["composition", "support", "gravity", "removal", "causality", "structure"],
+    make(rng) { const H = 18, W = 20, cols = pick(rng, 5, [3, 4, 6, 7, 8, 9]), left = rng.int(0, 1) === 1;
+      const base = [
+        { cells: rectCells(2, 3), r: 14, c: 3, color: cols[0] },
+        { cells: rectCells(2, 3), r: 14, c: 14, color: cols[1] },
+      ];
+      const kc = left ? 6 : 11, key = { cells: rectCells(2, 3), r: 12, c: kc, color: 2 };
+      const upper = [
+        { cells: rectCells(2, 3), r: 10, c: kc, color: cols[2] },
+        { cells: rectCells(1, 9), r: 8, c: 5, color: cols[3] },
+        { cells: rectCells(2, 2), r: 6, c: 8, color: cols[4] },
+      ];
+      const fallen = upper.map((o, i) => ({ ...o, r: [12, 10, 8][i] }));
+      return { in: render(H, W, [...base, key, ...upper]), out: render(H, W, [...base, ...fallen]) }; } },
 };
 
 function buildFamilyTask(famKey, rng, nEx) {
@@ -403,7 +662,7 @@ function buildFamilyTask(famKey, rng, nEx) {
   const diff = Math.min(1, 0.4 + 0.2 * (fam.steps - 1) + 0.04 * Math.min(6, nEx + 2));
   return {
     format: "prodigy-task", version: 1, width, height, palette: "arc10", fps: 1, examples, in: [test.in], out: [test.out],
-    meta: { id, rule: fam.rule, concepts: fam.concept, prior: fam.prior, difficulty: +diff.toFixed(2), template: "prog:" + famKey, source: "program-first", n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } },
+    meta: { id, rule: fam.rule, language_description: fam.rule, concepts: fam.concept, prior: fam.prior, difficulty: +diff.toFixed(2), depth: fam.steps, template: "prog:" + famKey, source: "program-first", variation: fam.variation, generator_code: fam.make ? fam.make.toString() : null, compiled_dsl: null, n_examples: nEx, teaching: { ok: true, coherent: true, examplesVary: true } },
   };
 }
 

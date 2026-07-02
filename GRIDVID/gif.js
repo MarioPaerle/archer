@@ -4,6 +4,7 @@
  * Purpose-built for 2dgridvid: frames are int grids of palette indices (0..N-1,
  * N<=256), so we skip quantization entirely and write the palette as the GIF
  * Global Color Table. Each cell is scaled to a `cell`xcell pixel block.
+ * Rendered previews draw a very light 1px grid by default, matching ARC-AGI style.
  *
  * UMD: window.GIFENC in the browser, require('./gif.js') in Node.
  * Returns a Uint8Array of GIF bytes.  encodeGif({frames, palette, cell, delay}).
@@ -63,9 +64,13 @@
   }
 
   function encodeGif(opts) {
-    const { frames, palette } = opts;
+    const { frames } = opts;
+    const palette = opts.palette.slice();
     const cell = opts.cell || 12;
     const delay = Math.max(2, Math.round((opts.delayMs || 140) / 10)); // GIF delay = 1/100s
+    const grid = opts.grid !== false && cell >= 4;
+    const gridColor = opts.gridColor == null ? palette.length : opts.gridColor;
+    if (grid && opts.gridColor == null) palette.push("#2b2b2f");
     const H = frames[0].length, W = frames[0][0].length;
     const pw = W * cell, ph = H * cell;
 
@@ -105,7 +110,11 @@
       const px = new Array(pw * ph);
       for (let y = 0; y < ph; y++) {
         const gy = (y / cell) | 0;
-        for (let x = 0; x < pw; x++) px[y * pw + x] = frame[gy][(x / cell) | 0];
+        for (let x = 0; x < pw; x++) {
+          const gx = (x / cell) | 0;
+          const isGrid = grid && (x % cell === 0 || y % cell === 0 || x === pw - 1 || y === ph - 1);
+          px[y * pw + x] = isGrid ? gridColor : frame[gy][gx];
+        }
       }
 
       u8(minCodeSize);

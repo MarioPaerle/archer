@@ -1,0 +1,22 @@
+# RULE: count the objects that enclose a hole. The OUT is a compact yellow tally bar.
+# The answer colour is grounded: the holed frame objects are already yellow in the IN.
+rule count the objects that enclose a hole; output one yellow cell per holed object
+concept counting predicate topology loop holes tally
+difficulty 0.6
+grid 22 15
+seed 1
+repeat rand 2 4 i
+  spawn frame rand 3 4 rand 3 4 at 1 $i*4+1 color 4
+end
+spawn ring 3 at 7 2 color 4
+repeat rand 2 4 j
+  spawn square rand 2 3 at 10 $j*4+1 color 3
+end
+hold 1
+cut
+tally where loop at 5 2 color 4 dir h
+remove shape frame
+remove shape ring
+remove shape square
+snap 1
+vary flip

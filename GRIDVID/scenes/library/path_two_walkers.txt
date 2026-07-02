@@ -5,8 +5,8 @@ vary color
 grid 14 16
 bg 0
 seed 1
-path random 12 color 5 walk 4
-path random 12 color 8 walk 6
+path at 1 1 to 1 6 to 4 6 to 4 10 color 5 walk 4
+path at 10 1 to 10 5 to 12 5 to 12 13 color 8 walk 6
 run 2
 cut
 run 10

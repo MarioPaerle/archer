@@ -315,6 +315,15 @@ a.dl{display:none}
     // into a notch (a slot cut into the top). Same s ⇒ they interlock exactly.
     notch: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) for (let j = 0; j < s; j++) if (!(j === m && i < 2)) o.push([i, j]); return normalize(o); },
     bump: (s = 5) => { const m = (s - 1) >> 1, o = rectCells(s, s); o.push([s, m]); o.push([s + 1, m]); return normalize(o); },
+    Ushape: (s = 5) => { const o = []; for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } for (let j = 0; j < s; j++) o.push([s - 1, j]); return normalize(dedupe(o)); },
+    Cshape: (s = 5) => { const o = []; for (let j = 0; j < s; j++) { o.push([0, j]); o.push([s - 1, j]); } for (let i = 0; i < s; i++) o.push([i, 0]); return normalize(dedupe(o)); },
+    Hshape: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } for (let j = 0; j < s; j++) o.push([m, j]); return normalize(dedupe(o)); },
+    Zshape: (s = 5) => { const o = []; for (let j = 0; j < s; j++) { o.push([0, j]); o.push([s - 1, j]); } for (let i = 1; i < s - 1; i++) o.push([i, s - 1 - i]); return normalize(dedupe(o)); },
+    stair: (s = 5) => { const o = []; for (let i = 0; i < s; i++) { o.push([i, i]); if (i + 1 < s) o.push([i + 1, i]); } return normalize(dedupe(o)); },
+    arrow: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 0; i < s; i++) o.push([i, m]); for (let k = 0; k <= m; k++) { o.push([k, m - k]); o.push([k, m + k]); } return normalize(dedupe(o)); },
+    key: (s = 5) => { const o = outline(rectCells(Math.max(3, s - 1), Math.max(3, s - 1))); const m = (s - 1) >> 1; for (let j = s - 1; j < s + 3; j++) o.push([m, j]); o.push([m - 1, s + 1]); o.push([m + 1, s + 2]); return normalize(dedupe(o)); },
+    fork: (s = 5) => { const m = (s - 1) >> 1, o = []; for (let i = 1; i < s; i++) o.push([i, m]); for (let j = 0; j < s; j += 2) { o.push([0, j]); o.push([1, j]); } return normalize(dedupe(o)); },
+    bridge: (s = 5) => { const o = []; for (let j = 0; j < s; j++) o.push([0, j]); for (let i = 0; i < s; i++) { o.push([i, 0]); o.push([i, s - 1]); } return normalize(dedupe(o)); },
   };
 
   function outline(cells) {

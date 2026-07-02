@@ -1,0 +1,16 @@
+# RULE: keep only the horizontally wide objects. Tall and square distractors are removed.
+# This exercises the `where orientation is wide` predicate selector without changing colours.
+rule extract the horizontally wide objects; remove tall and square distractors
+concept selection predicate orientation width shape-filter
+difficulty 0.55
+grid rand 14 17 11 13
+seed 1
+spawn rect 2 rand 4 6 color rand 2 8 random 1 1 4 5
+spawn rect 2 rand 4 6 color rand 2 8 random 6 1 9 5
+spawn rect rand 4 6 2 color rand 2 8 random 1 9 5 12
+spawn square rand 2 3 color rand 2 8 random 7 9 10 12
+hold 1
+cut
+extract where orientation is wide
+snap 1
+vary color
