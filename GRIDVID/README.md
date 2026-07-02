@@ -113,8 +113,8 @@ nothing (the model just copies the example output). Push intra-example variation
 *teaching* (every pair changes IN→OUT) and **lints weak tasks** (`examplesVary=false` ⇒ the demos are identical — fix it).
 ```bash
 node cli.js task scenes/tasks/*.txt -o out/ --examples 4 --gif   # build task families (+montage)
-node build_tasks_html.js   # gallery (all tasks)   ·   node build_v1_final.js   # the v1 showcase (10 tasks)
-node build_wild_html.js    # augmentation showcase  ·   node build_haiku2.js      # small-model DSL test
+node showcase.js corpus <f.jsonl>   # IN→OUT gallery  ·  node showcase.js trace <f.jsonl>  # thinking-grids
+node showcase.js builder            # god-builder menus ·  node cli.js gallery out/ --open  # GIF folder gallery
 ```
 **Procedural augmentation** is declared in the DSL: `vary flip rot zoom shift color` lists the rule-safe axes; one random
 subset (one transform per task) is applied to every example+test, preserving the rule. Only the generator declares safe axes.
@@ -137,7 +137,11 @@ coloured-line inverse), `turtle`/`drive` (program execution), `scatter`/`paint` 
 - `engine.js` — pure engine (shapes, physics, voronoi, shooters, liquid, spin, DSL, augmentation, JSON). Browser + Node.
 - `gif.js` — minimal animated-GIF89a encoder (indexed, ARC palette).
 - `index.html` — the studio editor (scripts inlined for double-click). Edit `engine.js`/`gif.js` then `node build.js` to refresh it.
-- `cli.js` — full agent CLI (`gen·augment·render·shapes·dsl·validate·new·self-test`); `gen.js` is a back-compat shim.
+- `cli.js` — full agent CLI (`gen·task·generate-dataset·generate-llm·propose·prompt·augment·render·gallery·dsl·validate·self-test`).
+- `builder.js` — the GOD BUILDER: hierarchical families + admits-graph + difficulty-budgeted menus (feeds `proposeMenu`).
+- `program.js` — object-level typed combinator AST + the deep rules (legend/containment/bands, `--compose`).
+- `gridgen.js` — the single verified family registry + `task <family>` spec-DSL (pulls `gen2–5`/`gen_deep`/`gen_iq`/`gen_logic`).
+- `showcase.js` — the single showcase entry point (`corpus·trace·builder·construct`).
 - `gridvid_io.py` — Python loader/bridge into the ARC pipeline.
 - `tokenizer/shape2d.js` — exact ordered semantic 2D tokenizer for common shapes plus `CELLS` fallback.
 - `tokenizer/patch2d.js` — exact low-level patch fallback (2×2 serpentine patches + video `SAME` deltas).
