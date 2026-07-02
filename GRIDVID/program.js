@@ -675,6 +675,14 @@ function sampleChain(rng, depth) {
   };
 }
 // generate N verified composed tasks (teaching-gated: OUT≠IN on every pair + examples vary).
+// every non-bg colour in each OUT must already appear in that pair's IN (Mario: no invented "magic" colours).
+// sampleChain picks program-fixed recolor targets while scenes vary per seed → must be VERIFIED, not assumed.
+function groundedColors(task) {
+  const last = v => v[v.length - 1], cset = g => { const s = new Set(); for (const r of g) for (const x of r) if (x) s.add(x); return s; };
+  const pairs = task.examples.map(e => [last(e.in), last(e.out)]).concat([[last(task.in), last(task.out)]]);
+  for (const [i, o] of pairs) { const ic = cset(i); for (const x of cset(o)) if (!ic.has(x)) return false; }
+  return true;
+}
 function generateComposed(opts = {}) {
   const n = opts.n || 12, depth = opts.depth || 3, rng = E.makeRng((opts.seed || 1) * 2654435761 + 97);
   const out = []; let guard = 0;
@@ -684,6 +692,7 @@ function generateComposed(opts = {}) {
     if (!task.meta.teaching.coherent) continue;   // reject ambiguous tasks (output objects overlap/overwrite)
     const idOk = task.examples.every(e => JSON.stringify(e.in) !== JSON.stringify(e.out)) && new Set(task.examples.map(e => JSON.stringify(e.out))).size >= 2;
     if (!idOk) continue;
+    if (!groundedColors(task)) continue;          // no magic colours: program-fixed recolor target must exist in every IN
     out.push(task);
   }
   return { records: out, emitted: out.length };
