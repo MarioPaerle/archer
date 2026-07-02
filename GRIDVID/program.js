@@ -825,6 +825,34 @@ function generateBands(opts = {}) {
   return { records: out, emitted: out.length };
 }
 
+// ============================================================ corpus ASSEMBLER (PAN-196, god-builder direction)
+// ONE entry point for the program-first corpus: stratified over the deep-rule families + composed chains, with
+// per-family quotas, the sensibility gate (inside buildProgramTask), and an HONEST coverage report (no silent
+// caps — if a family under-fills its quota, say so). Deep rules (Dchain≥2, derive→consume) carry most of the mix.
+const CORPUS_STRATA = [
+  { key: "legend", frac: 0.18, gen: (n, s) => generateLegend({ n, seed: s }) },                    // Dchain 3 symbol-grounding
+  { key: "containment", frac: 0.16, gen: (n, s) => generateContainment({ n, seed: s }) },           // Dchain 2 topology
+  { key: "bands", frac: 0.16, gen: (n, s) => generateBands({ n, seed: s }) },                       // Dchain 2 partition+key
+  { key: "composed_d2", frac: 0.18, gen: (n, s) => generateComposed({ n, depth: [2], seed: s }) },  // dependent chains
+  { key: "composed_d3", frac: 0.16, gen: (n, s) => generateComposed({ n, depth: [3], seed: s }) },
+  { key: "contextual", frac: 0.16, gen: (n, s) => generateComposed({ n, depth: [1, 2], seed: s + 7 }) }, // dispatch/anchor singles
+];
+function generateCorpus(opts = {}) {
+  const n = opts.n || 60, seed = opts.seed || 1, records = [], coverage = {};
+  for (const st of CORPUS_STRATA) {
+    const want = Math.max(1, Math.round(n * st.frac));
+    let got = [];
+    try { got = st.gen(want, seed).records; } catch (e) { got = []; }
+    for (const t of got) { t.meta.family = t.meta.family || st.key; t.meta.stratum = st.key; }
+    records.push(...got);
+    coverage[st.key] = { want, got: got.length, underfilled: got.length < want };
+  }
+  // deterministic shuffle so families interleave in the file
+  const rng = E.makeRng(seed * 7 + 3);
+  for (let i = records.length - 1; i > 0; i--) { const j = rng.int(0, i); [records[i], records[j]] = [records[j], records[i]]; }
+  return { records, emitted: records.length, coverage };
+}
+
 // ============================================================ self-test
 function selfTest() {
   const names = Object.keys(LIBRARY);
@@ -893,6 +921,12 @@ if (require.main === module) {
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} containment tasks → ${o}`); }
     else { for (const t of r.records) console.error("# " + t.meta.program.nl); console.error(`\n${r.emitted} containment tasks`); }
   }
+  else if (args.includes("--corpus")) {   // PAN-196: THE stratified program-first corpus (deep rules + chains, coverage-reported)
+    const n = +flag("--corpus", 60), o = flag("-o", null), r = generateCorpus({ n, seed: +flag("--seed", 1) });
+    console.error("coverage: " + Object.entries(r.coverage).map(([k, c]) => k + " " + c.got + "/" + c.want + (c.underfilled ? " ⚠UNDER" : "")).join("  ·  "));
+    if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} corpus tasks → ${o}`); }
+    else console.error(r.emitted + " corpus tasks (use -o file.jsonl)");
+  }
   else if (args.includes("--bands")) {   // P2 grid-partition/projection derive-then-consume DEEP rule (band → key colour)
     const n = +flag("--bands", 12), o = flag("-o", null), r = generateBands({ n, seed: +flag("--seed", 1) });
     if (o) { require("fs").writeFileSync(o, r.records.map(t => JSON.stringify(t)).join("\n") + "\n"); console.error(`wrote ${r.emitted} band-projection tasks → ${o}`); }
@@ -912,6 +946,6 @@ if (require.main === module) {
 
 module.exports = {
   renderScene, applyNode, sampleScene, buildProgramTask, buildDemo, LIBRARY, selfTest,
-  sampleChain, generateComposed, generateLegend, generateContainment, generateBands,
+  sampleChain, generateComposed, generateLegend, generateContainment, generateBands, generateCorpus,
   serializeNode, selPred, keyOf, applyPure, gravityPass,
 };
